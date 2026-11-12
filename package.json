@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "package": "mkdir -p dist && v=$(sed -n 's/.*\"version\": *\"\\(.*\\)\".*/\\1/p' manifest.json) && rm -f dist/tabtime-$v.zip && zip -r -X dist/tabtime-$v.zip manifest.json icons src"
   }
 }
