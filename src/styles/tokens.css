@@ -1,0 +1,151 @@
+/* Tabtime design tokens.
+   Brave-native dark: the orange is reserved for at-limit and blocked states
+   and is never used decoratively. The five site colours are a validated
+   categorical palette (OKLCH lightness band, chroma floor, and a worst
+   adjacent-pair CVD separation of dE 10.9 under simulated deuteranopia).
+   Three of them sit under 3:1 against the surface, which is allowed only
+   because every coloured mark in this UI sits beside a named, legible label. */
+
+:root {
+  --bg:            #17161C;
+  --surface:       #212028;
+  --surface-2:     #1C1B22;
+  --raised:        #2A2833;
+  --border:        #38353F;
+  --border-soft:   #2E2C36;
+
+  --ink:           #F2F1F5;
+  --ink-2:         #A6A2B2;
+  --ink-3:         #8E8A9A;
+
+  --accent:        #FB542B;   /* at limit / blocked -- reserved */
+  --warn:          #E0A63A;   /* approaching a limit */
+  --ok:            #34A87A;
+
+  --series-1:      #2A62B5;
+  --series-2:      #BD8A32;
+  --series-3:      #B8365C;
+  --series-4:      #34A87A;
+  --series-5:      #8850BE;
+  --series-other:  #5A5766;
+
+  --data:          #4B85D2;   /* single-series marks */
+  --data-hi:       #7FB0E8;
+
+  --font-ui: system-ui, 'Cantarell', 'DejaVu Sans', 'Liberation Sans', sans-serif;
+  --font-num: system-ui, 'Cantarell', 'DejaVu Sans', sans-serif;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+}
+
+* { box-sizing: border-box; }
+
+/* The hidden attribute only works via the UA rule [hidden]{display:none}, which
+   ANY author display rule outranks -- `section { display: flex }` alone was
+   enough to keep every "hidden" view on screen. Pin it. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--ink); text-decoration: none; }
+a:hover { color: #fff; }
+
+button { font-family: inherit; cursor: pointer; }
+
+:focus-visible {
+  outline: 2px solid var(--data-hi);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.rail {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+.rail > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--data);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 2px 6px;
+  border-radius: var(--r-sm);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.pill.blocked { background: rgba(251, 84, 43, 0.16); color: var(--accent); }
+.pill.warn { color: var(--warn); }
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 15px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.btn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.btn.ghost { border: none; color: var(--ink-3); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+}
+
+.empty {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.6;
+}

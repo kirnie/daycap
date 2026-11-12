@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tabtime</title>
+<link rel="stylesheet" href="../styles/tokens.css">
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<div class="shell">
+
+  <aside>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.2V12l3.1 1.9"/></svg>
+      <span>Tabtime</span>
+    </div>
+
+    <nav>
+      <button type="button" class="nav on" data-view="today">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>
+        Today
+      </button>
+      <button type="button" class="nav" data-view="history">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-6M22 19H3"/></svg>
+        History
+      </button>
+      <button type="button" class="nav" data-view="limits">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="11" width="15" height="9" rx="2"/><path d="M8 11V7.8a4 4 0 0 1 8 0V11"/></svg>
+        Limits
+        <span class="tally" id="limit-tally"></span>
+      </button>
+      <button type="button" class="nav" data-view="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="10" cy="16" r="2.2"/></svg>
+        Settings
+      </button>
+    </nav>
+
+    <span class="grow"></span>
+
+    <div class="status card">
+      <div class="status-top"><span class="dot" style="background:var(--ok)"></span><span>Tracking</span></div>
+      <p>Active tab of the focused window. Idle after <span id="idle-label">60</span>s.</p>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div>
+        <h1 id="view-title">Today</h1>
+        <p id="view-sub"></p>
+      </div>
+      <span class="grow"></span>
+      <div id="topbar-actions"></div>
+    </header>
+
+    <!-- TODAY -->
+    <section id="view-today">
+      <div class="kpis">
+        <div class="card kpi"><div class="eyebrow">Active time</div><div class="num" id="k-total">—</div><div class="kpi-sub" id="k-total-sub"></div></div>
+        <div class="card kpi"><div class="eyebrow">Sites visited</div><div class="num" id="k-sites">—</div><div class="kpi-sub" id="k-sites-sub"></div></div>
+        <div class="card kpi"><div class="eyebrow">Limits hit</div><div class="num" id="k-hit">—</div><div class="kpi-sub" id="k-hit-sub"></div></div>
+        <div class="card kpi"><div class="eyebrow">Longest stretch</div><div class="num" id="k-long">—</div><div class="kpi-sub" id="k-long-sub"></div></div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="chart-head">
+          <span class="title">Active minutes by hour</span>
+          <span class="muted" id="chart-peak"></span>
+          <span class="grow"></span>
+          <span class="muted">Local time &middot; idle excluded</span>
+        </div>
+        <div class="plot-row top">
+          <div class="yaxis"><span>60</span><span>30</span><span>0</span></div>
+          <div class="plot" id="plot">
+            <div class="grid g0"></div><div class="grid g1"></div><div class="grid g2"></div>
+            <div class="bars" id="bars"></div>
+            <div class="tip" id="tip" hidden></div>
+          </div>
+        </div>
+        <div class="plot-row axis">
+          <div class="yaxis"></div>
+          <div class="xaxis" id="xaxis"></div>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="card table-card">
+          <div class="chart-head"><span class="title">Today's sites</span></div>
+          <div class="thead">
+            <span class="c-site">Site</span>
+            <span class="c-time">Time</span>
+            <span class="c-share">Share of day</span>
+            <span class="c-status">Status</span>
+          </div>
+          <div id="site-rows"></div>
+        </div>
+
+        <div class="card limits-card">
+          <div class="chart-head">
+            <span class="title">Limits</span>
+            <span class="grow"></span>
+            <button type="button" class="linkish" id="go-limits">Manage</button>
+          </div>
+          <div id="limit-rows"></div>
+          <span class="grow"></span>
+          <p class="footnote">Every limit resets at 00:00 local time. Raising a limit lifts a block immediately.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="view-history" hidden>
+      <div class="card chart-card">
+        <div class="chart-head">
+          <span class="title">Active time per day</span>
+          <span class="grow"></span>
+          <span class="muted" id="hist-range"></span>
+        </div>
+        <div class="plot-row top">
+          <div class="yaxis" id="hist-yaxis"></div>
+          <div class="plot" id="hist-plot">
+            <div class="grid g0"></div><div class="grid g1"></div><div class="grid g2"></div>
+            <div class="bars" id="hist-bars"></div>
+            <div class="tip" id="hist-tip" hidden></div>
+          </div>
+        </div>
+        <div class="plot-row axis">
+          <div class="yaxis"></div>
+          <div class="xaxis" id="hist-xaxis"></div>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="chart-head"><span class="title">Day by day</span></div>
+        <div class="thead">
+          <span class="c-site">Day</span>
+          <span class="c-time">Active</span>
+          <span class="c-share">Busiest site</span>
+          <span class="c-status">Limits hit</span>
+        </div>
+        <div id="hist-rows"></div>
+      </div>
+    </section>
+
+    <!-- LIMITS -->
+    <section id="view-limits" hidden>
+      <div class="card pad">
+        <div class="chart-head"><span class="title">Add a limit</span></div>
+        <form class="addrow" id="add-form">
+          <label class="sr-only" for="add-domain">Site</label>
+          <input id="add-domain" type="text" placeholder="youtube.com" autocomplete="off" spellcheck="false">
+          <label class="sr-only" for="add-minutes">Minutes per day</label>
+          <input id="add-minutes" type="number" min="5" max="1440" step="5" value="60">
+          <span class="unit">min / day</span>
+          <button type="submit" class="btn primary">Add limit</button>
+        </form>
+        <p class="footnote" id="add-hint">One limit per site. Subdomains share it &mdash; a limit on youtube.com covers m.youtube.com too.</p>
+      </div>
+
+      <div class="card table-card">
+        <div class="chart-head"><span class="title">Active limits</span></div>
+        <div id="all-limits"></div>
+      </div>
+
+      <div class="card table-card">
+        <div class="chart-head"><span class="title">Today's sites without a limit</span></div>
+        <div id="suggestions"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" hidden>
+      <div class="card pad">
+        <div class="chart-head"><span class="title">Tracking</span></div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Accurate tracking</div>
+            <div class="s-help">Reads focus and video playback from the page itself instead of guessing from window state. Needs page access; Brave will ask once. Nothing is read from page content and nothing leaves the browser.</div>
+            <div class="s-help" id="accurate-note"></div>
+          </div>
+          <label class="switch"><input type="checkbox" id="s-accurate"><span>Enabled</span></label>
+        </div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Playing media counts as activity</div>
+            <div class="s-help">Keeps the clock running through a film with no keyboard or mouse input. Turn off if you tend to leave video playing unattended.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="s-media"><span>Enabled</span></label>
+        </div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Idle timeout</div>
+            <div class="s-help">How long without keyboard or mouse before the clock pauses.</div>
+          </div>
+          <select id="s-idle">
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+            <option value="120">2 minutes</option>
+            <option value="300">5 minutes</option>
+          </select>
+        </div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Warn before a limit</div>
+            <div class="s-help">A notification when you approach a daily limit.</div>
+          </div>
+          <select id="s-warn">
+            <option value="0">Off</option>
+            <option value="50">At 50%</option>
+            <option value="80">At 80%</option>
+            <option value="90">At 90%</option>
+          </select>
+        </div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Notifications</div>
+            <div class="s-help">Desktop notification when a site gets blocked.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="s-notify"><span>Enabled</span></label>
+        </div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Diagnostics</div>
+            <div class="s-help">Records focus events and tracking decisions to help debug window and workspace issues.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="s-diag"><span>Recording</span></label>
+        </div>
+
+        <div class="setting">
+          <div>
+            <div class="s-name">Keep history for</div>
+            <div class="s-help">Older days are deleted automatically at midnight.</div>
+          </div>
+          <select id="s-keep">
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="120">120 days</option>
+            <option value="365">A year</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card pad">
+        <div class="chart-head"><span class="title">Your data</span></div>
+        <p class="footnote">Everything stays in this browser profile. Nothing is sent anywhere &mdash; the extension asks for no host permissions and makes no network requests.</p>
+        <div class="danger-row">
+          <button type="button" class="btn" id="export">Export CSV</button>
+          <button type="button" class="btn danger" id="wipe">Delete all history</button>
+        </div>
+        <p class="footnote" id="wipe-note"></p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module" src="dashboard.js"></script>
+</body>
+</html>

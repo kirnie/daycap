@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tabtime</title>
+<link rel="stylesheet" href="../styles/tokens.css">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<main id="view-today">
+  <header class="bar">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.2V12l3.1 1.9"/></svg>
+    <span class="wordmark">Tabtime</span>
+    <span class="spacer"></span>
+    <button type="button" id="open-dashboard" class="icon-btn" title="Open dashboard" aria-label="Open dashboard">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="10" cy="16" r="2.2"/></svg>
+    </button>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">Active today</div>
+    <div class="hero-row">
+      <span class="num total" id="total">—</span>
+      <span class="delta" id="delta"></span>
+    </div>
+  </section>
+
+  <div class="segbar" id="segbar" role="img" aria-label="Share of today's active time by site, listed below"></div>
+
+  <div class="section-head">
+    <span class="eyebrow">Top sites</span>
+    <span class="count" id="site-count"></span>
+  </div>
+
+  <div id="sites"></div>
+
+  <span class="spacer"></span>
+
+  <footer class="actions">
+    <button type="button" class="btn primary" id="add-limit">
+      <svg viewBox="0 0 24 24" class="i" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Set a limit
+    </button>
+    <button type="button" class="btn" id="go-dashboard">
+      Dashboard
+      <svg viewBox="0 0 24 24" class="i" aria-hidden="true"><path d="M9 5.5 15.5 12 9 18.5"/></svg>
+    </button>
+  </footer>
+</main>
+
+<main id="view-sheet" hidden>
+  <header class="bar">
+    <button type="button" id="sheet-back" class="icon-btn" aria-label="Back to today">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5.5 8.5 12 15 18.5"/></svg>
+    </button>
+    <span class="wordmark">Daily limit</span>
+  </header>
+
+  <div class="site-chip card">
+    <span class="dot" id="sheet-dot"></span>
+    <div>
+      <div class="chip-domain" id="sheet-domain">—</div>
+      <div class="chip-meta" id="sheet-used">—</div>
+    </div>
+  </div>
+
+  <div class="stepper">
+    <button type="button" id="step-down" class="step" aria-label="Decrease limit by 15 minutes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+    </button>
+    <div class="num value" id="limit-value">1h 00m</div>
+    <button type="button" id="step-up" class="step" aria-label="Increase limit by 15 minutes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+
+  <div class="slider">
+    <label class="sr-only" for="limit-range">Daily limit in minutes</label>
+    <input id="limit-range" type="range" min="0" max="240" step="15" value="60">
+    <div class="ticks"><span>0</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span></div>
+  </div>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="rule">
+    <svg viewBox="0 0 24 24" class="i" aria-hidden="true"><rect x="4.5" y="11" width="15" height="9" rx="2"/><path d="M8 11V7.8a4 4 0 0 1 8 0V11"/></svg>
+    <div>
+      <div class="rule-title">Blocks until midnight</div>
+      <div class="rule-body">At the limit, <span id="rule-domain">this site</span> is replaced by a block page in every tab until 00:00 local time. There is no snooze.</div>
+    </div>
+  </div>
+
+  <label class="toggle">
+    <input type="checkbox" id="warn-toggle">
+    <span>Warn me when 80% is used</span>
+  </label>
+
+  <label class="toggle">
+    <input type="checkbox" id="playback-toggle">
+    <span>Count only while audio is playing</span>
+  </label>
+  <p class="toggle-help" id="playback-help">A focused tab is not a watched one. Applies immediately.</p>
+
+  <span class="spacer"></span>
+
+  <footer class="actions col">
+    <button type="button" class="btn primary" id="save-limit">Save limit</button>
+    <button type="button" class="btn ghost" id="remove-limit">Remove limit</button>
+  </footer>
+</main>
+
+<script type="module" src="popup.js"></script>
+</body>
+</html>

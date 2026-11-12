@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Blocked until midnight — Tabtime</title>
+<link rel="stylesheet" href="../styles/tokens.css">
+<link rel="stylesheet" href="blocked.css">
+</head>
+<body>
+
+<div class="topline"></div>
+
+<div class="brand">
+  <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.2V12l3.1 1.9"/></svg>
+  <span>Tabtime</span>
+</div>
+
+<main class="card">
+  <div class="badge">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="11" width="15" height="9" rx="2"/><path d="M8 11V7.8a4 4 0 0 1 8 0V11"/><path d="M12 14.7v1.8"/></svg>
+  </div>
+
+  <div class="eyebrow accent" id="eyebrow">Daily limit reached</div>
+  <h1 id="domain">this site</h1>
+  <p class="lede" id="lede">You've spent today's allowance here.</p>
+
+  <div class="stats">
+    <div><div class="eyebrow">Used today</div><div class="num accent" id="used">—</div></div>
+    <div><div class="eyebrow">Your limit</div><div class="num" id="limit">—</div></div>
+    <div><div class="eyebrow">Unblocks in</div><div class="num" id="remaining">—</div></div>
+  </div>
+
+  <div class="progress">
+    <div class="rail"><i id="dayfill"></i></div>
+    <div class="ends"><span id="now-label">now</span><span>unblocks &middot; 00:00</span></div>
+  </div>
+
+  <div class="actions">
+    <button type="button" class="btn" id="dashboard">
+      Open dashboard
+      <svg viewBox="0 0 24 24" class="i" aria-hidden="true"><path d="M9 5.5 15.5 12 9 18.5"/></svg>
+    </button>
+    <button type="button" class="btn" id="close">Close this tab</button>
+  </div>
+
+  <p class="fine" id="fine">No snooze, by design. If that was the wrong number, change it in the dashboard &mdash; the block lifts the moment you do.</p>
+</main>
+
+<footer id="foot"></footer>
+
+<script type="module" src="blocked.js"></script>
+</body>
+</html>
