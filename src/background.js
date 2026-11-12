@@ -1,8 +1,9 @@
 import { registrableDomain } from './lib/domain.js';
-import { dayKey, prevDayKey, nextHour, nextMidnight, fmtDuration, fmtMinutes, sumTotals } from './lib/time.js';
+import { dayKey, prevDayKey, nextMidnight, fmtDuration, fmtMinutes, sumTotals } from './lib/time.js';
+import { hourSlices, creditRecord, creditEnd, blockedSet } from './lib/accrual.js';
 import {
   getSettings, patchSettings, getLimits, setLimit,
-  getDay, putDay, getDays, listDayKeys, pruneDays,
+  getDay, putDay, getDays, listDayKeys, pruneDays, migrate,
   getPlaybackOnly, setPlaybackOnly,
 } from './lib/store.js';
 
@@ -12,7 +13,6 @@ const TICK_MINUTES = 0.5;        // 30s heartbeat; also the resolution of a sett
 const GRACE_MS = 150_000;        // never credit more than this past the last heartbeat
 const BLUR_GRACE_MS = 1_200;     // see "the Linux blur problem" below
 const FOCUS_MEMORY_MS = 60_000;  // how long focus may coast on memory alone
-const SESSION_GAP_MS = 90_000;   // longer than this starts a new session
 
 // The Linux blur problem
 // ----------------------
@@ -36,18 +36,18 @@ const SESSION_GAP_MS = 90_000;   // longer than this starts a new session
 // in-memory state would not survive it.
 
 // --- diagnostics -------------------------------------------------------------
-// A bounded ring buffer in storage.local, written only when something actually
-// changes: every focus event, and every resolve whose outcome differs from the
-// last one. Enough to reconstruct what the browser reported during a workspace
-// switch, without writing on every idle tick. Settings -> Diagnostics turns it
-// off; `diag` is the storage key to read.
+// Off by default. When Settings -> Diagnostics is on: a bounded ring buffer in
+// storage.local, written only when something actually changes -- every focus
+// event, and every resolve whose outcome differs from the last one. It holds
+// window ids and site names, never URLs. Turning the setting off, or deleting
+// history, deletes the log. `diag` is the storage key to read.
 
 const DIAG_MAX = 80;
 
 async function diag(event, detail) {
   try {
-    const { settings } = await chrome.storage.local.get('settings');
-    if (settings && settings.diagnostics === false) return;
+    const settings = await getSettings();
+    if (!settings.diagnostics) return;
     const { diag: log = [] } = await chrome.storage.local.get('diag');
     log.push({ t: new Date().toISOString().slice(11, 23), event, ...detail });
     while (log.length > DIAG_MAX) log.shift();
@@ -165,31 +165,14 @@ async function registerProbe(on) {
 // Credits [start, end) to one domain, split on hour boundaries so the hourly
 // chart is exact and a span crossing midnight lands in both days.
 async function accrue(domain, start, end) {
-  let cursor = start;
-  while (cursor < end) {
-    const slice = Math.min(end, nextHour(cursor));
-    await creditSlice(domain, cursor, slice);
-    cursor = slice;
+  for (const [from, to] of hourSlices(start, end)) {
+    await creditSlice(domain, from, to);
   }
 }
 
 async function creditSlice(domain, start, end) {
-  const seconds = (end - start) / 1000;
-  if (seconds <= 0) return;
-
   const rec = await getDay(dayKey(start));
-  const hour = new Date(start).getHours();
-
-  rec.totals[domain] = (rec.totals[domain] || 0) + seconds;
-  rec.hours[domain] = rec.hours[domain] || {};
-  rec.hours[domain][hour] = (rec.hours[domain][hour] || 0) + seconds;
-
-  const last = rec.sessions[rec.sessions.length - 1];
-  if (last && last.d === domain && start - last.e <= SESSION_GAP_MS) {
-    last.e = end;
-  } else {
-    rec.sessions.push({ d: domain, s: start, e: end });
-  }
+  if (!creditRecord(rec, domain, start, end)) return;
 
   const effects = await noteThresholds(rec, domain);
   await putDay(rec);
@@ -251,7 +234,7 @@ async function noteThresholds(rec, domain) {
 // jumps to asOf regardless.
 async function settle(state, asOf) {
   if (state.domain && state.since) {
-    const end = Math.min(asOf, state.heartbeat + GRACE_MS);
+    const end = creditEnd(state, asOf, GRACE_MS);
     if (end > state.since) await accrue(state.domain, state.since, end);
   }
   state.since = asOf;
@@ -376,7 +359,6 @@ async function resolveTarget(state, now) {
       outcome: 'untrackable',
       windowId: win.id,
       via,
-      urlHead: String(tab.url || '').slice(0, 40),
       status: tab.status,
     });
     return null;
@@ -470,14 +452,6 @@ async function runTick(reason) {
 }
 
 // --- blocking ----------------------------------------------------------------
-
-function blockedSet(rec, limits) {
-  const out = new Set();
-  for (const [domain, minutes] of Object.entries(limits)) {
-    if (minutes > 0 && (rec.totals[domain] || 0) >= minutes * 60) out.add(domain);
-  }
-  return out;
-}
 
 function blockedUrl(domain, original) {
   const params = new URLSearchParams({ d: domain });
@@ -627,6 +601,9 @@ async function scheduleMidnight() {
 }
 
 async function init() {
+  await migrate();
+  await pruneDays();   // also at midnight, but the browser may be closed then
+
   const settings = await getSettings();
   chrome.idle.setDetectionInterval(Math.max(15, settings.idleSeconds));
 
@@ -665,13 +642,18 @@ const handlers = {
     };
   },
 
-  async history({ days = 14 } = {}) {
-    const keys = (await listDayKeys()).slice(-days);
-    return { days: await getDays(keys) };
+  // Every day still kept, oldest first -- retention is what bounds it, so
+  // nothing is stored that the dashboard cannot show.
+  async history({ days } = {}) {
+    const keys = await listDayKeys();
+    return { days: await getDays(days ? keys.slice(-days) : keys) };
   },
 
   async setLimit({ domain, minutes }) {
-    const limits = await setLimit(domain, minutes);
+    // Time is bucketed by registrable domain, so a limit keyed any other way
+    // (news.ycombinator.com) would never match. Normalise at the door.
+    const key = registrableDomain(`https://${domain}`) || domain;
+    const limits = await setLimit(key, minutes);
     await sweepTabs();      // a lowered limit can block immediately
     await refreshBadge();   // a raised one clears the badge
     return { limits };
@@ -686,6 +668,7 @@ const handlers = {
   async patchSettings({ patch }) {
     const settings = await patchSettings(patch);
     chrome.idle.setDetectionInterval(Math.max(15, settings.idleSeconds));
+    if (patch && patch.diagnostics === false) await chrome.storage.local.remove('diag');
     return { settings };
   },
 
@@ -715,7 +698,7 @@ const handlers = {
 
   async clearData() {
     const keys = await listDayKeys();
-    await chrome.storage.local.remove(keys.map((k) => `day:${k}`));
+    await chrome.storage.local.remove([...keys.map((k) => `day:${k}`), 'diag']);
     await chrome.storage.session.remove('track');
     await refreshBadge();
     await tick('cleared');

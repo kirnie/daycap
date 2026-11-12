@@ -59,7 +59,7 @@
         <div class="card kpi"><div class="eyebrow">Active time</div><div class="num" id="k-total">—</div><div class="kpi-sub" id="k-total-sub"></div></div>
         <div class="card kpi"><div class="eyebrow">Sites visited</div><div class="num" id="k-sites">—</div><div class="kpi-sub" id="k-sites-sub"></div></div>
         <div class="card kpi"><div class="eyebrow">Limits hit</div><div class="num" id="k-hit">—</div><div class="kpi-sub" id="k-hit-sub"></div></div>
-        <div class="card kpi"><div class="eyebrow">Longest stretch</div><div class="num" id="k-long">—</div><div class="kpi-sub" id="k-long-sub"></div></div>
+        <div class="card kpi"><div class="eyebrow">Daily average</div><div class="num" id="k-avg">—</div><div class="kpi-sub" id="k-avg-sub"></div></div>
       </div>
 
       <div class="card chart-card">
@@ -176,7 +176,7 @@
         <div class="setting">
           <div>
             <div class="s-name">Accurate tracking</div>
-            <div class="s-help">Reads focus and video playback from the page itself instead of guessing from window state. Needs page access; Brave will ask once. Nothing is read from page content and nothing leaves the browser.</div>
+            <div class="s-help">Reads focus and video playback from the page itself instead of guessing from window state. <strong>The cost:</strong> it needs access to every site, and injects a small script into every page and frame. That script reports only two things &mdash; whether the page has focus and whether a video or audio element is playing. It reads no page content and nothing leaves the browser. Turning this off removes the access again.</div>
             <div class="s-help" id="accurate-note"></div>
           </div>
           <label class="switch"><input type="checkbox" id="s-accurate"><span>Enabled</span></label>
@@ -227,7 +227,7 @@
         <div class="setting">
           <div>
             <div class="s-name">Diagnostics</div>
-            <div class="s-help">Records focus events and tracking decisions to help debug window and workspace issues.</div>
+            <div class="s-help">Off by default. Keeps the last 80 focus events and tracking decisions (window ids and site names, never URLs) to help debug window and workspace issues. Turning it off deletes the log.</div>
           </div>
           <label class="switch"><input type="checkbox" id="s-diag"><span>Recording</span></label>
         </div>
@@ -235,7 +235,7 @@
         <div class="setting">
           <div>
             <div class="s-name">Keep history for</div>
-            <div class="s-help">Older days are deleted automatically at midnight.</div>
+            <div class="s-help">Calendar days. Older days are deleted at midnight and when the browser starts. History and CSV export show everything that is kept.</div>
           </div>
           <select id="s-keep">
             <option value="30">30 days</option>
@@ -248,7 +248,7 @@
 
       <div class="card pad">
         <div class="chart-head"><span class="title">Your data</span></div>
-        <p class="footnote">Everything stays in this browser profile. Nothing is sent anywhere &mdash; the extension asks for no host permissions and makes no network requests.</p>
+        <p class="footnote">Everything stays in this browser profile and the extension makes no network requests. Per day it stores seconds per site, total seconds per hour, and when a limit was hit &mdash; no URLs, no page titles, no visit timeline. Page access is requested only if you turn on Accurate tracking.</p>
         <div class="danger-row">
           <button type="button" class="btn" id="export">Export CSV</button>
           <button type="button" class="btn danger" id="wipe">Delete all history</button>

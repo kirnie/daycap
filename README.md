@@ -74,8 +74,7 @@ input and reports you active. Window focus is the only signal that catches it.
 ### A known, measured cost
 
 A tab mid-navigation reports an empty URL for about 140ms before the new one
-commits, so the clock stops for that long on each navigation. It does not
-fragment sessions (the 90s session-gap rule bridges it) and it is not worth
+commits, so the clock stops for that long on each navigation. It is not worth
 special-casing.
 
 ## Limits and blocking
@@ -87,6 +86,8 @@ special-casing.
 - The block holds until **00:00 local time**. There is no snooze.
 - Raising the limit lifts the block immediately, and the block page offers to
   return you to the page it replaced.
+- Limits are keyed by site, the same way time is counted: entering
+  `news.ycombinator.com` sets the limit on `ycombinator.com`.
 
 Whether a site *is* blocked is always derived from the live limit, never from a
 stored flag, which is what makes "raise the limit, block lifts" work without a
@@ -123,30 +124,51 @@ a suspended machine or a closed browser cannot bank hours it never spent.
 | `idle` | detect lock screen and away-from-keyboard |
 | `alarms` | the 30s heartbeat and the midnight reset |
 | `notifications` | the warning before a limit, and the block notice |
+| `scripting` | only used by Accurate tracking, to register its page script |
+| `*://*/*` (optional, off by default) | only requested if you turn on Accurate tracking |
+
+**No page access by default.** Out of the box the extension has no host
+permissions, injects nothing, and makes no network requests. Blocking is done by
+navigating the tab to a bundled page.
+
+### Accurate tracking, and what it costs
+
+Without it, focus comes from the browser's window flag, which is unreliable on
+Wayland (see above). Settings → **Accurate tracking** fixes that by asking the
+pages themselves, and the price is the broadest permission there is: access to
+every site, and a script (`src/content/probe.js`) injected into every page and
+frame. That script reports two booleans to the extension's own service worker —
+"this page has focus" and "a video/audio element is playing" — and nothing
+else. It reads no page content. Turning the setting off removes the permission
+and the script.
 
 ## Diagnostics
 
-Settings -> Diagnostics keeps a bounded 80-entry ring buffer in
+Off by default. Settings → Diagnostics keeps a bounded 80-entry ring buffer in
 `chrome.storage.local` under the key `diag`: every focus event, and every
-tracking decision whose outcome changed. It exists because focus behaviour on
-Wayland could not be reasoned about, only measured. It records URL prefixes for
-untrackable tabs, so turn it off once you are not debugging.
-
-**No host permissions.** The extension never injects a content script, never
-reads page content, and makes no network requests. Blocking is done by
-navigating the tab to a bundled page.
+tracking decision whose outcome changed. It holds window ids and site names,
+never URLs. Turning the setting off deletes the log, and so does **Delete all
+history**.
 
 ## Data
 
 Stored in `chrome.storage.local` in this browser profile only:
 
-- `day:YYYY-MM-DD` — per-domain totals, per-hour buckets, sessions, and when
-  each limit was first hit
-- `limits` — minutes per day, per domain
+- `day:YYYY-MM-DD` — seconds per site, total seconds per hour of the day (not
+  per site), and when each limit was first hit
+- `limits` — minutes per day, per site
+- `playbackOnly` — sites marked "audio only"
 - `settings` — idle timeout, warning threshold, notifications, retention
 
-Old days are pruned at midnight (default: keep 120). Settings → **Export CSV**
-dumps everything as `date,domain,seconds,minutes`.
+Not stored: URLs, page titles, or any timeline of individual visits.
+
+Days older than the retention setting (default: 30 calendar days) are deleted at
+midnight and at browser start. History and Settings → **Export CSV**
+(`date,domain,seconds,minutes`) cover everything that is kept, so nothing is
+stored that you cannot see.
+
+Records written by 1.0.0 also held a per-visit session list and per-site hours.
+They are rewritten in the slim form the first time this version starts.
 
 ## Layout
 
@@ -155,15 +177,30 @@ manifest.json
 icons/                  generated PNGs
 src/
   background.js         tracker, limit enforcement, message API
+  content/probe.js      the Accurate tracking page script (not loaded by default)
   lib/
     domain.js           registrable-domain bucketing
     time.js             day keys, local midnight, duration formatting
-    store.js            storage schema and access
+    accrual.js          the accounting rules, free of chrome.* so they are testable
+    store.js            storage schema, retention, migration
   styles/tokens.css     shared design tokens
   popup/                toolbar popup + limit sheet
   dashboard/            today, history, limits, settings
   blocked/              the page a blocked site is replaced by
+test/                   tests for lib/ (no dependencies)
 ```
+
+## Tests
+
+```
+npm test                    # Node
+gjs -m test/run-gjs.js      # GNOME's gjs, if Node is not installed
+```
+
+They cover site bucketing, day and hour boundaries (including a span crossing
+midnight), the credit cap after a suspend, limit/block derivation, retention by
+calendar date, and the migration of old records. The focus heuristics in
+`background.js` depend on live browser events and are not covered.
 
 ## Known limits
 

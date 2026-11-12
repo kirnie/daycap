@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tabtime",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Counts time on the active tab of the focused window, with daily limits that block a site until midnight.",
   "permissions": [
     "storage",

@@ -1,4 +1,8 @@
 import { fmtDuration, fmtMinutes, fmtClock, fmtLongDate, nextMidnight, sumTotals } from '../lib/time.js';
+import { registrableDomain } from '../lib/domain.js';
+
+const CHART_DAYS = 30;   // the History chart shows the newest 30; the list shows all
+const hh = (i) => String(i).padStart(2, '0');
 
 const SERIES = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)', 'var(--series-5)'];
 const OTHER = 'var(--series-other)';
@@ -106,36 +110,32 @@ function renderToday() {
   const firstHit = Object.entries(today.blocked).sort((a, b) => a[1] - b[1])[0];
   $('k-hit-sub').textContent = firstHit ? `${firstHit[0]}, at ${fmtClock(firstHit[1])}` : 'Nothing blocked today';
 
-  const longest = (today.sessions || []).reduce((best, s) => ((s.e - s.s) > (best ? best.e - best.s : 0) ? s : best), null);
-  $('k-long').textContent = longest ? fmtDuration((longest.e - longest.s) / 1000) : '—';
-  $('k-long-sub').textContent = longest ? `${longest.d}, ${fmtClock(longest.s)}–${fmtClock(longest.e)}` : 'No sessions yet';
+  const earlier = history.filter((d) => d.date !== today.date);
+  $('k-avg').textContent = earlier.length
+    ? fmtDuration(earlier.reduce((a, d) => a + sumTotals(d), 0) / earlier.length)
+    : '—';
+  $('k-avg-sub').textContent = earlier.length
+    ? `Across ${earlier.length} earlier ${earlier.length === 1 ? 'day' : 'days'} with activity`
+    : 'No earlier days yet';
 
-  renderHourly(today, ranked);
+  renderHourly(today);
   renderSiteTable(ranked, total, limits, blocked);
   renderLimitPanel(today, limits, blocked);
 }
 
-function renderHourly(today, ranked) {
+function hourTotals(rec) {
   const perHour = new Array(24).fill(0);
-  const topPerHour = new Array(24).fill(null);
+  for (const [h, sec] of Object.entries(rec.hours || {})) perHour[Number(h)] += sec;
+  return perHour;
+}
 
-  for (const [domain, hours] of Object.entries(today.hours || {})) {
-    for (const [h, sec] of Object.entries(hours)) {
-      const i = Number(h);
-      perHour[i] += sec;
-      if (!topPerHour[i] || sec > topPerHour[i][1]) topPerHour[i] = [domain, sec];
-    }
-  }
+function renderHourly(today) {
+  const perHour = hourTotals(today);
 
   const peakIdx = perHour.indexOf(Math.max(...perHour));
   $('chart-peak').textContent = perHour[peakIdx] > 0
-    ? `Peak ${Math.round(perHour[peakIdx] / 60)}m at ${String(peakIdx).padStart(2, '0')}:00`
+    ? `Peak ${Math.round(perHour[peakIdx] / 60)}m at ${hh(peakIdx)}:00`
     : 'Nothing tracked yet today';
-
-  const colourOf = (domain) => {
-    const i = ranked.findIndex(([d]) => d === domain);
-    return i >= 0 && i < 5 ? SERIES[i] : OTHER;
-  };
 
   drawBars({
     plot: $('plot'),
@@ -149,8 +149,6 @@ function renderHourly(today, ranked) {
     tip: (i, v) => ({
       title: `${String(i).padStart(2, '0')}:00–${String((i + 1) % 24).padStart(2, '0')}:00`,
       value: v ? `${Math.round(v / 60)} min active` : 'Nothing tracked',
-      note: topPerHour[i] ? `${topPerHour[i][0]} ${Math.round(topPerHour[i][1] / 60)}m` : '',
-      color: topPerHour[i] ? colourOf(topPerHour[i][0]) : OTHER,
     }),
   });
 }
@@ -238,14 +236,15 @@ function renderLimitPanel(today, limits, blocked) {
 
 function renderHistory() {
   $('view-title').textContent = 'History';
-  $('view-sub').textContent = `Last ${history.length} ${history.length === 1 ? 'day' : 'days'} with activity`;
+  $('view-sub').textContent = `${history.length} ${history.length === 1 ? 'day' : 'days'} with activity · kept for ${snap.settings.keepDays} days`;
 
-  const totals = history.map(sumTotals);
+  const charted = history.slice(-CHART_DAYS);
+  const totals = charted.map(sumTotals);
   const peak = Math.max(3600, ...totals);
   const ceil = Math.ceil(peak / 3600) * 3600;
 
   $('hist-range').textContent = totals.length
-    ? `Busiest day ${fmtDuration(Math.max(...totals))}`
+    ? `Busiest day ${fmtDuration(Math.max(...totals))}${history.length > charted.length ? ` · newest ${charted.length} days charted` : ''}`
     : 'Nothing recorded yet';
 
   $('hist-yaxis').innerHTML = `<span>${Math.round(ceil / 3600)}h</span><span>${(ceil / 7200).toFixed(1)}h</span><span>0</span>`;
@@ -257,17 +256,17 @@ function renderHistory() {
     tipEl: $('hist-tip'),
     values: totals,
     max: ceil,
-    barWidth: Math.max(10, Math.min(36, Math.floor(700 / Math.max(1, history.length)))),
+    barWidth: Math.max(10, Math.min(36, Math.floor(700 / Math.max(1, charted.length)))),
     label: (i, forAxis) => {
-      const d = new Date(`${history[i].date}T00:00:00`);
-      return forAxis ? String(d.getDate()) : history[i].date;
+      const d = new Date(`${charted[i].date}T00:00:00`);
+      return forAxis ? String(d.getDate()) : charted[i].date;
     },
     tip: (i, v) => {
-      const top = rankedSites(history[i])[0];
+      const top = rankedSites(charted[i])[0];
       return {
-        title: fmtLongDate(new Date(`${history[i].date}T12:00:00`).getTime()),
+        title: fmtLongDate(new Date(`${charted[i].date}T12:00:00`).getTime()),
         value: v ? fmtDuration(v) : 'Nothing tracked',
-        note: top ? `${top[0]} ${fmtDuration(top[1])}` : '',
+        note: top ? `${esc(top[0])} ${fmtDuration(top[1])}` : '',
         color: SERIES[0],
       };
     },
@@ -310,20 +309,51 @@ function renderHistory() {
   });
 }
 
-// Every site of one day, ranked. Colours follow the Today table: the top five
-// get a series colour, the rest share the neutral one.
+// A small hour-by-hour strip for one past day, on the same 60-minute scale as
+// the Today chart so days compare by eye.
+function hourStrip(rec) {
+  const perHour = hourTotals(rec);
+  const peakIdx = perHour.indexOf(Math.max(...perHour));
+
+  const wrap = document.createElement('div');
+  wrap.className = 'mini-hours';
+  if (perHour[peakIdx] <= 0) return wrap;
+
+  const cap = document.createElement('div');
+  cap.className = 'mh-cap';
+  cap.textContent = `Active minutes by hour · peak ${Math.round(perHour[peakIdx] / 60)}m at ${hh(peakIdx)}:00`;
+
+  const bars = document.createElement('div');
+  bars.className = 'mh-bars';
+  bars.setAttribute('role', 'img');
+  bars.setAttribute('aria-label', cap.textContent);
+  perHour.forEach((sec, i) => {
+    const bar = document.createElement('i');
+    if (sec) bar.style.height = `${Math.max(4, Math.min(100, (sec / 3600) * 100))}%`;
+    else bar.className = 'zero';
+    bar.title = `${hh(i)}:00–${hh((i + 1) % 24)}:00 · ${sec ? `${Math.round(sec / 60)} min` : 'nothing'}`;
+    bars.append(bar);
+  });
+
+  const axis = document.createElement('div');
+  axis.className = 'mh-axis';
+  axis.innerHTML = '<span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>';
+
+  wrap.append(cap, bars, axis);
+  return wrap;
+}
+
+// One past day: its hours, then every site ranked. Colours follow the Today
+// table: the top five get a series colour, the rest share the neutral one.
 function dayDetail(rec, total) {
   const box = document.createElement('div');
   box.className = 'day-detail';
-
-  const sessionsOf = {};
-  for (const s of rec.sessions || []) sessionsOf[s.d] = (sessionsOf[s.d] || 0) + 1;
+  box.append(hourStrip(rec));
 
   rankedSites(rec).forEach(([domain, sec], i) => {
     const colour = i < 5 ? SERIES[i] : OTHER;
     const pct = (sec / total) * 100;
     const blockedAt = rec.blocked && rec.blocked[domain];
-    const n = sessionsOf[domain] || 0;
 
     const row = document.createElement('div');
     row.className = 'trow sub';
@@ -333,7 +363,7 @@ function dayDetail(rec, total) {
       <span class="c-share"><span class="rail"><i style="width:${pct.toFixed(1)}%;background:${colour}"></i></span><span class="pc">${Math.round(pct)}%</span></span>
       <span class="c-status">${blockedAt
         ? `<span class="pill blocked">${ICON.lock}Blocked ${fmtClock(blockedAt)}</span>`
-        : n ? `${n} ${n === 1 ? 'session' : 'sessions'}` : '—'}</span>`;
+        : '—'}</span>`;
     box.append(row);
   });
 
@@ -445,17 +475,21 @@ function renderLimits() {
 
 $('add-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Time is bucketed per site (m.youtube.com counts as youtube.com), so the
+  // limit has to be keyed the same way or it would never trigger.
   const raw = $('add-domain').value.trim().toLowerCase();
-  const domain = raw.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  const typed = raw.replace(/^https?:\/\//, '').split(/[/?#]/)[0];
+  const domain = registrableDomain(`https://${typed}`);
   const minutes = Math.max(5, Math.min(1440, parseInt($('add-minutes').value, 10) || 60));
 
-  if (!domain || !domain.includes('.')) {
+  if (!domain) {
     $('add-hint').textContent = 'Enter a site like youtube.com.';
     return;
   }
   await send({ type: 'setLimit', domain, minutes });
   $('add-domain').value = '';
-  $('add-hint').textContent = `Limit set: ${domain}, ${fmtMinutes(minutes)} a day.`;
+  $('add-hint').textContent = `Limit set: ${domain}, ${fmtMinutes(minutes)} a day.`
+    + (typed !== domain && typed !== `www.${domain}` ? ` (${typed} is counted as part of ${domain}.)` : '');
   await reload();
 });
 
@@ -470,12 +504,12 @@ function renderSettings() {
   $('s-warn').value = String(s.warnAtPercent);
   $('s-notify').checked = !!s.notify;
   $('s-keep').value = String(s.keepDays);
-  $('s-diag').checked = s.diagnostics !== false;
+  $('s-diag').checked = !!s.diagnostics;
   $('s-accurate').checked = !!s.accurate;
   $('s-media').checked = s.mediaCountsAsPresent !== false;
   $('accurate-note').textContent = s.accurate
-    ? 'On. Tabs opened before you enabled this may need one reload.'
-    : 'Off \u2014 falling back to window focus, which is unreliable on Wayland.';
+    ? 'On \u2014 Tabtime has access to every site. Tabs opened before you enabled this may need one reload.'
+    : 'Off \u2014 no page access. Falling back to window focus, which is unreliable on Wayland.';
 }
 
 async function patch(key, value) {
@@ -515,8 +549,8 @@ $('s-accurate').addEventListener('change', async (e) => {
   snap.settings = res.settings;
   e.target.checked = !!res.settings.accurate;
   note.textContent = res.settings.accurate
-    ? 'On. Tabs opened before you enabled this may need one reload.'
-    : 'Off \u2014 falling back to window focus, which is unreliable on Wayland.';
+    ? 'On \u2014 Tabtime has access to every site. Tabs opened before you enabled this may need one reload.'
+    : 'Off \u2014 no page access. Falling back to window focus, which is unreliable on Wayland.';
   await reload();
 });
 
@@ -540,7 +574,7 @@ $('wipe').addEventListener('click', async () => {
   if ($('wipe').dataset.armed !== '1') {
     $('wipe').dataset.armed = '1';
     $('wipe').textContent = 'Click again to confirm';
-    note.textContent = 'This deletes every recorded day. Your limits and settings are kept.';
+    note.textContent = 'This deletes every recorded day and the diagnostics log. Your limits and settings are kept.';
     setTimeout(() => {
       $('wipe').dataset.armed = '0';
       $('wipe').textContent = 'Delete all history';
@@ -579,7 +613,7 @@ function paint() {
 
 async function reload() {
   snap = await send({ type: 'snapshot' });
-  const res = await send({ type: 'history', days: 30 });
+  const res = await send({ type: 'history' });
   history = (res.days || []).filter((d) => sumTotals(d) > 0);
   $('idle-label').textContent = String(snap.settings.idleSeconds);
   paint();
