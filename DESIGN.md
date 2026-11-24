@@ -138,6 +138,12 @@ DevTools. Generation counters stop a read that raced a write from being kept.
 An evicted worker just reads again on its next start, and startup runs once
 even when `onStartup` and the missing-alarm check both fire. Beyond that:
 
+- **Idle ticks write nothing.** When no site is tracked before or after a tick
+  and only `heartbeat`/`since` moved, the tracking state is not saved, so a
+  browser sitting behind other apps all night costs no storage. Ticks do keep
+  writing while a browser window still claims focus, for example on a lock
+  screen: `lastFlagTrue` then moves, and it has to survive an eviction for focus
+  memory to bridge a Wayland flap.
 - **The badge** is written only when its number changes, and only from the
   events that can change it (a limit crossed or set, a wipe, midnight). It is
   not refreshed on every tick.

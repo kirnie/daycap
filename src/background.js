@@ -420,6 +420,7 @@ function tick(reason) {
 async function runTick(reason) {
   const now = Date.now();
   const [state, cfg] = await Promise.all([loadState(), getConfig()]);
+  const before = quietKey(state);
 
   if (state.pendingBlurAt) {
     if (now - state.pendingBlurAt >= BLUR_GRACE_MS) {
@@ -454,7 +455,18 @@ async function runTick(reason) {
     state.windowId = null;
   }
 
+  // Nothing tracked before or after, and nothing else moved: only heartbeat
+  // and since changed, and neither means anything without a domain. Skip the
+  // write; a browser left idle all night then costs no storage at all.
+  if (!state.domain && quietKey(state) === before) {
+    trackCache = { ...state };
+    return;
+  }
   await saveState(state);
+}
+
+function quietKey(state) {
+  return JSON.stringify({ ...state, heartbeat: 0, since: 0 });
 }
 
 // --- blocking ----------------------------------------------------------------
