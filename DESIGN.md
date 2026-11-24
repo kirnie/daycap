@@ -259,7 +259,9 @@ extension into a throwaway headless profile, maps `site.test` to a local
 server, and checks live tracking on a real page, blocking (with the exact URL
 kept), the limit lock in the worker, dashboard and popup, the wipe keeping a
 block, the block page noticing the lift without polling, "Continue" going back
-to the original URL, and the "New day" text. `cost` mode injects a counter into
+to the original URL, the "New day" text, and a block page with its clock
+shifted to 23:59:50 counting down by the second and lifting itself after
+00:00. `cost` mode injects a counter into
 a copy of any tree, for comparisons like this one (fresh start, then three
 ticks idle and three tracked):
 

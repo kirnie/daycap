@@ -239,6 +239,37 @@ async def main():
     check('"Continue" returns to the exact original URL', original in pages_after, json.dumps(pages_after))
     check('and does not open the dashboard', not any('dashboard.html' in u for u in pages_after), json.dumps(pages_after))
 
+    # Midnight, for real: a block page whose clock is shifted to 23:59:50
+    # local. It must repaint every second in the final minute, then lift by
+    # itself after 00:00 and say "New day" -- with no worker involved.
+    cl = (await b.call('Target.createTarget', {'url': 'about:blank'}))['targetId']
+    cp = await connect(next(t for t in targets() if t['id'] == cl))
+    await cp.call('Page.enable')
+    await cp.call('Page.addScriptToEvaluateOnNewDocument', {'source': """(() => {
+      const real = Date.now.bind(Date); const n = new Date();
+      const offset = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 50).getTime() - real();
+      const RealDate = Date;
+      globalThis.Date = class extends RealDate {
+        constructor(...a) { if (a.length) super(...a); else super(real() + offset); }
+        static now() { return real() + offset; }
+      }; })()"""})
+    fake_today = today   # 23:59:50 is still today
+    await w.ev(f"chrome.storage.local.set({{ limits: {{ 'site.test': 5 }}, 'day:{fake_today}': {{ date: '{fake_today}', totals: {{ 'site.test': 400 }}, hours: {{}}, blocked: {{ 'site.test': 1 }}, warned: {{}} }} }})")
+    await asyncio.sleep(0.5)
+    await cp.call('Page.navigate', {'url': f'{base}/src/blocked/blocked.html?d=site.test&k={fake_today}&u=' + urllib.parse.quote(original, safe='')})
+    await asyncio.sleep(1.2)
+    seen = []
+    for _ in range(4):
+        seen.append(await cp.ev("document.getElementById('remaining').textContent"))
+        await asyncio.sleep(1)
+    check('final minute: the countdown repaints every second', len(set(seen)) >= 3 and all(x.endswith('s') for x in seen), json.dumps(seen))
+    await asyncio.sleep(8)
+    after = await cp.ev("[document.getElementById('eyebrow').textContent, document.getElementById('dashboard').textContent.trim()]")
+    check('after 00:00 the page lifts by itself and says "New day"', after[0] == 'New day' and after[1] == 'Continue to site.test', json.dumps(after))
+    await b.call('Target.closeTarget', {'targetId': cl})
+    await w.ev(f"chrome.storage.local.remove('day:{fake_today}')")
+    await asyncio.sleep(0.5)
+
     nd = (await b.call('Target.createTarget', {'url': f'{base}/src/blocked/blocked.html?d=site.test&k=2000-01-01&u=' + urllib.parse.quote(original, safe='')}))['targetId']
     await asyncio.sleep(1)
     ndp = await connect(next(t for t in targets() if t['id'] == nd))
