@@ -122,8 +122,19 @@ async def main():
     await b.call('Target.closeTarget', {'targetId': live})
 
     today = await w.ev("(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()")
-    await w.ev(f"""chrome.storage.local.set({{ limits: {{ 'site.test': 5 }},
-      'day:{today}': {{ date: '{today}', totals: {{ 'site.test': 400 }}, hours: {{}}, blocked: {{ 'site.test': Date.now() }}, warned: {{}} }} }})""")
+
+    # The state below is written straight into storage, as an edit from
+    # DevTools would be. Wait until the worker has stopped tracking the closed
+    # tab, so no in-flight tick writes its own day record over ours, then make
+    # sure the write stuck and the worker's caches have heard about it.
+    for _ in range(80):
+        if await w.ev("chrome.storage.session.get('track').then((x) => !(x.track && x.track.domain))"): break
+        await asyncio.sleep(0.5)
+    seeded = f"""{{ date: '{today}', totals: {{ 'site.test': 400 }}, hours: {{}}, blocked: {{ 'site.test': Date.now() }}, warned: {{}} }}"""
+    for _ in range(5):
+        await w.ev(f"chrome.storage.local.set({{ limits: {{ 'site.test': 5 }}, 'day:{today}': {seeded} }})")
+        await asyncio.sleep(1)
+        if await w.ev(f"chrome.storage.local.get('day:{today}').then((x) => x['day:{today}'].totals['site.test'] === 400)"): break
 
     original = 'http://site.test:8765/page.html?q=1#frag'
     await b.call('Target.createTarget', {'url': original})
