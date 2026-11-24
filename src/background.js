@@ -2,9 +2,9 @@ import { registrableDomain } from './lib/domain.js';
 import { dayKey, prevDayKey, nextMidnight, fmtDuration, fmtMinutes, sumTotals } from './lib/time.js';
 import { hourSlices, creditRecord, creditEnd, blockedSet, keepBlocked } from './lib/accrual.js';
 import {
-  getSettings, patchSettings, getLimits, setLimit,
+  getSettings, getConfig, patchSettings, getLimits, setLimit,
   getDay, putDay, getDays, listDayKeys, pruneDays, migrate,
-  getPlaybackOnly, setPlaybackOnly,
+  setPlaybackOnly,
 } from './lib/store.js';
 
 // --- tuning ------------------------------------------------------------------
@@ -44,10 +44,9 @@ const FOCUS_MEMORY_MS = 60_000;  // how long focus may coast on memory alone
 
 const DIAG_MAX = 80;
 
-async function diag(event, detail) {
+async function diag(event, detail, settings) {
   try {
-    const settings = await getSettings();
-    if (!settings.diagnostics) return;
+    if (!(settings || await getSettings()).diagnostics) return;
     const { diag: log = [] } = await chrome.storage.local.get('diag');
     log.push({ t: new Date().toISOString().slice(11, 23), event, ...detail });
     while (log.length > DIAG_MAX) log.shift();
@@ -63,13 +62,21 @@ const BLANK = {
 };
 
 
+// Kept in memory too, write-through: only this worker writes `track`, so the
+// session copy is read once per worker lifetime, after an eviction.
+let trackCache = null;
+
 async function loadState() {
-  const { track } = await chrome.storage.session.get('track');
-  return { ...BLANK, ...(track || {}) };
+  if (!trackCache) {
+    const { track } = await chrome.storage.session.get('track');
+    trackCache = { ...BLANK, ...(track || {}) };
+  }
+  return { ...trackCache };
 }
 
 async function saveState(state) {
   await chrome.storage.session.set({ track: state });
+  trackCache = { ...state };
 }
 
 // --- page probe (accurate mode) ----------------------------------------------
@@ -164,17 +171,17 @@ async function registerProbe(on) {
 
 // Credits [start, end) to one domain, split on hour boundaries so the hourly
 // chart is exact and a span crossing midnight lands in both days.
-async function accrue(domain, start, end) {
+async function accrue(domain, start, end, cfg) {
   for (const [from, to] of hourSlices(start, end)) {
-    await creditSlice(domain, from, to);
+    await creditSlice(domain, from, to, cfg);
   }
 }
 
-async function creditSlice(domain, start, end) {
+async function creditSlice(domain, start, end, cfg) {
   const rec = await getDay(dayKey(start));
   if (!creditRecord(rec, domain, start, end)) return;
 
-  const effects = await noteThresholds(rec, domain);
+  const effects = noteThresholds(rec, domain, cfg);
   await putDay(rec);
 
   if (effects.blocked) {
@@ -188,12 +195,10 @@ async function creditSlice(domain, start, end) {
 // side effects the caller owes. Whether a domain *is* blocked is always derived
 // from the live limit (see blockedSet) -- this only stamps the first crossing,
 // so raising a limit lifts a block immediately.
-async function noteThresholds(rec, domain) {
-  const limits = await getLimits();
+function noteThresholds(rec, domain, { limits, settings }) {
   const limitMin = limits[domain];
   if (!limitMin || limitMin <= 0) return {};
 
-  const settings = await getSettings();
   const usedSec = rec.totals[domain] || 0;
   const limitSec = limitMin * 60;
 
@@ -232,10 +237,10 @@ async function noteThresholds(rec, domain) {
 // than over-crediting a couple of minutes after a resume (which happens
 // rarely). Time past the cap is discarded, never credited late -- `since`
 // jumps to asOf regardless.
-async function settle(state, asOf) {
+async function settle(state, asOf, cfg) {
   if (state.domain && state.since) {
     const end = creditEnd(state, asOf, GRACE_MS);
-    if (end > state.since) await accrue(state.domain, state.since, end);
+    if (end > state.since) await accrue(state.domain, state.since, end, cfg);
   }
   state.since = asOf;
 }
@@ -301,9 +306,10 @@ async function focusedWindow(state, now) {
 // Exactly one tab can be current: the active tab of the focused window.
 // Returns null when nothing qualifies -- the browser is not in front, the user
 // is idle or locked, or the tab is not a trackable http(s) page.
-async function resolveTarget(state, now) {
-  const settings = await getSettings();
-  const media = await getMedia();
+async function resolveTarget(state, now, { settings, playbackOnly }) {
+  // Media reports only exist in accurate mode; skip the read otherwise.
+  const media = settings.accurate ? await getMedia() : {};
+  const noteResolve = (detail) => noteOutcome(detail, settings);
 
   let win = null;
   let tab = null;
@@ -376,7 +382,6 @@ async function resolveTarget(state, now) {
   }
 
   // 4. Playback gate: for these sites a focused tab is not a watched one.
-  const playbackOnly = await getPlaybackOnly();
   if (playbackOnly[domain] && !playing) {
     await noteResolve({ outcome: 'not-playing', domain, windowId: win.id });
     return null;
@@ -388,11 +393,12 @@ async function resolveTarget(state, now) {
 
 // Only logs when the outcome changes, so a quiet hour costs one entry.
 let lastResolveKey = null;
-async function noteResolve(detail) {
+async function noteOutcome(detail, settings) {
+  if (!settings.diagnostics) return;
   const key = JSON.stringify(detail);
   if (key === lastResolveKey) return;
   lastResolveKey = key;
-  await diag('resolve', detail);
+  await diag('resolve', detail, settings);
 }
 
 let ticking = null;
@@ -413,12 +419,12 @@ function tick(reason) {
 
 async function runTick(reason) {
   const now = Date.now();
-  const state = await loadState();
+  const [state, cfg] = await Promise.all([loadState(), getConfig()]);
 
   if (state.pendingBlurAt) {
     if (now - state.pendingBlurAt >= BLUR_GRACE_MS) {
       // A real pause. Credit only up to the moment focus was lost.
-      await settle(state, state.pendingBlurAt);
+      await settle(state, state.pendingBlurAt, cfg);
       state.domain = null;
       state.tabId = null;
       state.windowId = null;
@@ -432,12 +438,12 @@ async function runTick(reason) {
       return;
     }
   } else {
-    await settle(state, now);
+    await settle(state, now, cfg);
   }
 
   state.heartbeat = now;
 
-  const target = await resolveTarget(state, now);
+  const target = await resolveTarget(state, now, cfg);
   if (target) {
     state.domain = target.domain;
     state.tabId = target.tabId;
@@ -489,11 +495,18 @@ async function sweepTabs() {
   }));
 }
 
+// The badge only changes when the blocked set does: a limit is crossed, a
+// limit is set, history is wiped, or midnight passes. Each of those calls this;
+// the last value written is remembered so a repeat is a no-op.
+let badgeText = null;
 async function refreshBadge() {
   const [rec, limits] = await Promise.all([getDay(), getLimits()]);
   const count = blockedSet(rec, limits).size;
-  await chrome.action.setBadgeBackgroundColor({ color: '#FB542B' });
-  await chrome.action.setBadgeText({ text: count ? String(count) : '' });
+  const text = count ? String(count) : '';
+  if (text === badgeText) return;
+  if (badgeText === null) await chrome.action.setBadgeBackgroundColor({ color: '#FB542B' });
+  await chrome.action.setBadgeText({ text });
+  badgeText = text;
 }
 
 function notify(title, body) {
@@ -561,9 +574,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   if (!changeInfo.url) return;
 
+  // Most navigations are to sites without a limit; only read the day record
+  // when this one has one.
   const domain = registrableDomain(changeInfo.url);
-  if (domain) {
-    const [rec, limits] = await Promise.all([getDay(), getLimits()]);
+  const limits = domain ? await getLimits() : {};
+  if (limits[domain]) {
+    const rec = await getDay();
     if (blockedSet(rec, limits).has(domain)) {
       try {
         await chrome.tabs.update(tabId, { url: blockedUrl(domain, changeInfo.url) });
@@ -596,7 +612,6 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'tick') {
     await tick('alarm');
-    await refreshBadge();
   } else if (alarm.name === 'midnight') {
     await tick('midnight');
     await pruneDays();
@@ -636,9 +651,10 @@ chrome.runtime.onStartup.addListener(init);
 const handlers = {
   async snapshot() {
     await tick('snapshot');
-    const [today, yesterday, limits, settings, state, playbackOnly] = await Promise.all([
-      getDay(), getDay(prevDayKey()), getLimits(), getSettings(), loadState(), getPlaybackOnly(),
+    const [days, { limits, settings, playbackOnly }, state] = await Promise.all([
+      getDays([prevDayKey(), dayKey()]), getConfig(), loadState(),
     ]);
+    const [yesterday, today] = days;
     return {
       today,
       yesterdayTotal: sumTotals(yesterday),
@@ -719,6 +735,7 @@ const handlers = {
       const kept = keepBlocked(rec, blockedSet(rec, limits));
       await chrome.storage.local.remove([...keys.map((k) => `day:${k}`), 'diag']);
       await chrome.storage.session.remove('track');
+      trackCache = null;
       if (kept) await putDay(kept);
       cleared = keys.length;
     });

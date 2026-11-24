@@ -22,7 +22,44 @@ export async function getSettings() {
 export async function patchSettings(patch) {
   const next = { ...(await getSettings()), ...patch };
   await chrome.storage.local.set({ settings: next });
+  dropConfig();
   return next;
+}
+
+// Settings, limits and playback gates in one storage read -- what a tick needs.
+//
+// Only the service worker writes these keys (the pages go through messages),
+// so the worker keeps the last read in memory and re-reads only after a write.
+// Every writer below drops the cache, and so does any change seen through
+// storage.onChanged, which covers an edit made from DevTools. The cache is tied
+// to the storage area it came from, and dies with the worker; a cold worker
+// simply reads again. Callers must treat the result as read-only.
+const CONFIG_KEYS = ['settings', 'limits', 'playbackOnly'];
+let config = null;      // { area, value }
+let generation = 0;     // bumped by every write, so a read that raced one is not kept
+let watching = false;
+
+function dropConfig() { config = null; generation += 1; }
+
+export async function getConfig() {
+  const area = chrome.storage.local;
+  if (config && config.area === area) return config.value;
+
+  if (!watching && chrome.storage.onChanged) {
+    watching = true;
+    chrome.storage.onChanged.addListener((changes, name) => {
+      if (name === 'local' && CONFIG_KEYS.some((k) => k in changes)) dropConfig();
+    });
+  }
+  const gen = generation;
+  const got = await area.get(CONFIG_KEYS);
+  const value = {
+    settings: { ...DEFAULT_SETTINGS, ...(got.settings || {}) },
+    limits: got.limits || {},
+    playbackOnly: got.playbackOnly || {},
+  };
+  if (gen === generation) config = { area, value };
+  return value;
 }
 
 export async function getLimits() {
@@ -35,6 +72,7 @@ export async function setLimit(domain, minutes) {
   if (!minutes || minutes <= 0) delete limits[domain];
   else limits[domain] = Math.round(minutes);
   await chrome.storage.local.set({ limits });
+  dropConfig();
   return limits;
 }
 
@@ -51,6 +89,7 @@ export async function setPlaybackOnly(domain, on) {
   if (on) map[domain] = true;
   else delete map[domain];
   await chrome.storage.local.set({ playbackOnly: map });
+  dropConfig();
   return map;
 }
 
@@ -111,5 +150,6 @@ export async function migrate() {
 
   await chrome.storage.local.set(patch);
   await chrome.storage.local.remove('diag');
+  dropConfig();
   return true;
 }

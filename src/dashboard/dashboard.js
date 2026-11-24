@@ -598,7 +598,7 @@ $('wipe').addEventListener('click', async () => {
   $('wipe').dataset.armed = '0';
   $('wipe').textContent = 'Delete all history';
   note.textContent = `Deleted ${res.cleared} ${res.cleared === 1 ? 'day' : 'days'}.`;
-  await reload();
+  await reload({ full: true });
 });
 
 // --- view switching ----------------------------------------------------------
@@ -623,13 +623,26 @@ function paint() {
   else renderSettings();
 }
 
-async function reload() {
+// Past days do not change, so the full history is fetched once (and again
+// after a wipe or when the date rolls over); a refresh only swaps in today.
+let historyDay = null;
+
+async function reload({ full = false } = {}) {
   snap = await send({ type: 'snapshot' });
-  const res = await send({ type: 'history' });
-  history = (res.days || []).filter((d) => sumTotals(d) > 0);
+  if (full || historyDay !== snap.today.date) {
+    const res = await send({ type: 'history' });
+    history = (res.days || []).filter((d) => sumTotals(d) > 0);
+    historyDay = snap.today.date;
+  } else {
+    history = history.filter((d) => d.date !== snap.today.date);
+    if (sumTotals(snap.today) > 0) history.push(snap.today);
+  }
   $('idle-label').textContent = String(snap.settings.idleSeconds);
   paint();
 }
 
+// Refresh while someone is looking; a dashboard left in a background tab
+// does not keep waking the service worker.
 reload();
-setInterval(reload, 30_000);
+setInterval(() => { if (!document.hidden) reload(); }, 30_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) reload(); });

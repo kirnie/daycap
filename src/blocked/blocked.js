@@ -1,4 +1,5 @@
 import { fmtDuration, fmtMinutes, fmtClock, nextMidnight, dayKey } from '../lib/time.js';
+import { blockedSet } from '../lib/accrual.js';
 
 const params = new URLSearchParams(location.search);
 const domain = params.get('d') || 'this site';
@@ -24,14 +25,16 @@ $('dashboard').addEventListener('click', () => {
   else chrome.runtime.openOptionsPage();
 });
 
-// The countdown runs locally every second; the snapshot that decides whether
-// the block still stands is fetched far less often, so the service worker is
-// not woken once a second by a page the user is not even looking at.
+// The page never messages the service worker. It reads the two storage keys
+// it needs directly and repaints when they change, so a blocked tab left open
+// all day costs nothing in the background. The clock runs only while the tab
+// is visible.
 function paintClock() {
   const now = Date.now();
 
-  // Crossing midnight is the moment the block lifts; ask straight away rather
-  // than waiting for the next poll.
+  // Crossing midnight is the moment the block lifts; nothing in storage
+  // changes then, so the clock is what notices. A tab hidden at midnight
+  // notices as soon as it is shown again.
   const today = dayKey(now);
   if (today !== shownDay) {
     shownDay = today;
@@ -48,27 +51,25 @@ function paintClock() {
 }
 
 async function paintState() {
-  let snap;
-  try {
-    snap = await chrome.runtime.sendMessage({ type: 'snapshot' });
-  } catch {
-    return;   // worker restarting; the next poll will catch it
-  }
-  if (!snap || snap.error) return;
+  const slot = `day:${dayKey()}`;
+  const got = await chrome.storage.local.get([slot, 'limits']);
+  const today = { date: dayKey(), totals: {}, ...(got[slot] || {}) };
+  const limits = got.limits || {};
+  const blocked = [...blockedSet(today, limits)];
 
-  const used = snap.today.totals[domain] || 0;
-  const limit = snap.limits[domain];
+  const used = today.totals[domain] || 0;
+  const limit = limits[domain];
 
   $('used').textContent = fmtDuration(used);
   $('limit').textContent = limit ? fmtMinutes(limit) : 'None';
 
-  const blockedCount = snap.blocked.length;
+  const blockedCount = blocked.length;
   $('foot').textContent = blockedCount > 1
     ? `Other sites are unaffected · ${blockedCount - 1} more ${blockedCount - 1 === 1 ? 'limit is' : 'limits are'} still running today`
     : 'Other sites are unaffected';
 
-  if (!snap.blocked.includes(domain)) {
-    showUnblocked(snap.today.date);
+  if (!blocked.includes(domain)) {
+    showUnblocked(today.date);
     return;
   }
   $('lede').textContent = limit
@@ -94,13 +95,26 @@ function showUnblocked(today) {
   const go = $('dashboard');
   go.classList.add('primary');
   go.textContent = `Continue to ${domain}`;
+  clearInterval(clock);
 
   $('fine').textContent = original
     ? 'Picking up where you left off.'
     : 'Reload to continue.';
 }
 
-paintClock();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && !unblocked && (changes.limits || changes[`day:${dayKey()}`])) paintState();
+});
+
+let clock = null;
+function syncClock() {
+  clearInterval(clock);
+  clock = null;
+  if (document.visibilityState !== 'visible') return;
+  paintClock();
+  if (!unblocked) clock = setInterval(paintClock, 1000);
+}
+document.addEventListener('visibilitychange', syncClock);
+
 paintState();
-setInterval(paintClock, 1000);
-setInterval(paintState, 15_000);
+syncClock();

@@ -1,6 +1,6 @@
 import { test, eq } from './harness.js';
 import { installChrome } from './harness.js';
-import { getDay, getDays, listDayKeys, pruneDays, migrate, getSettings, setLimit } from '../src/lib/store.js';
+import { getDay, getDays, listDayKeys, pruneDays, migrate, getSettings, patchSettings, getConfig, setLimit } from '../src/lib/store.js';
 
 const at = (y, mo, d, h = 12) => new Date(y, mo - 1, d, h).getTime();
 const day = (date, sec = 60) => ({ date, totals: { 'a.com': sec }, hours: { 9: sec }, blocked: {}, warned: {} });
@@ -76,4 +76,28 @@ test('store: a zero limit removes the limit', async () => {
   installChrome();
   eq(await setLimit('a.com', 45.4), { 'a.com': 45 });
   eq(await setLimit('a.com', 0), {});
+});
+
+test('store: one config read matches the separate getters', async () => {
+  installChrome({ settings: { idleSeconds: 90 }, limits: { 'a.com': 30 }, playbackOnly: { 'b.com': true } });
+  const cfg = await getConfig();
+  eq(cfg.settings, await getSettings());
+  eq(cfg.settings.idleSeconds, 90);
+  eq(cfg.limits, { 'a.com': 30 });
+  eq(cfg.playbackOnly, { 'b.com': true });
+
+  installChrome();
+  eq((await getConfig()).limits, {});
+  eq((await getConfig()).playbackOnly, {});
+});
+
+test('store: config is cached until something writes it', async () => {
+  const data = installChrome({ limits: { 'a.com': 30 } });
+  eq((await getConfig()).limits, { 'a.com': 30 });
+  data.limits = { 'a.com': 99 };                     // not written through the store
+  eq((await getConfig()).limits, { 'a.com': 30 }, 'served from memory');
+  await setLimit('b.com', 10);
+  eq((await getConfig()).limits, { 'a.com': 99, 'b.com': 10 }, 'a write drops the cache');
+  await patchSettings({ idleSeconds: 45 });
+  eq((await getConfig()).settings.idleSeconds, 45);
 });

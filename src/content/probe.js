@@ -17,7 +17,11 @@
 
 const HEARTBEAT_MS = 15_000;
 let beat = null;
-let lastReported = null;
+// The top frame reports its state once on load, which clears a "playing" left
+// behind by the previous page in this tab. Sub-frames (ads, embeds) start at
+// "not playing" and speak only when that changes, so a page with a dozen
+// iframes does not wake the service worker a dozen times on every load.
+let lastReported = window === window.top ? null : false;
 
 function playingNow() {
   return Array.from(document.querySelectorAll('video, audio')).some(

@@ -119,6 +119,38 @@ That means a slower tick (Chrome may clamp the alarm period) delays the limit
 check but never loses time. Credit is capped at 150s past the last heartbeat, so
 a suspended machine or a closed browser cannot bank hours it never spent.
 
+## Keeping it light
+
+The 30s tick is the only recurring work. It used to make nine storage reads;
+now a tick that credits time makes one (the day record it writes), and a tick
+with nothing to credit makes none. Measured in a headless Brave over three real
+ticks: 15 reads before, 0 after.
+
+That works because only the service worker writes storage -- the popup,
+dashboard and block page go through messages or only read. So the worker keeps
+the tracking state (write-through to `storage.session`) and the combined
+settings + limits + playback gates (`getConfig`) in memory. A store write drops
+the config cache, and so does any change seen through `storage.onChanged`. A
+generation counter stops a read that raced a write from being kept. An evicted
+worker just reads again on its next start. Beyond that:
+
+- **The badge** is written only when its number changes, and only from the
+  events that can change it (a limit crossed or set, a wipe, midnight). It is
+  not refreshed on every tick.
+- **Block pages never message the worker.** They read `limits` and today's
+  record straight from storage, repaint on `storage.onChanged`, and run their
+  clock only while visible. A blocked tab left open all day wakes nothing.
+- **The dashboard** refreshes every 30s only while it is visible. It fetches
+  the full history once, and after that swaps in just today's record, since
+  past days do not change.
+- **Navigation checks** read the day record only for sites that have a limit.
+- **The page probe** (Accurate tracking only) reports from sub-frames only when
+  their playback state changes, so a page full of ad iframes does not wake the
+  worker once per frame on load.
+- **Media reports** are read only in Accurate mode, the only mode that
+  writes them, and the diagnostics bookkeeping is skipped when diagnostics
+  are off.
+
 ## Permissions
 
 | Permission | Why |
