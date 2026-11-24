@@ -122,17 +122,21 @@ a suspended machine or a closed browser cannot bank hours it never spent.
 ## Keeping it light
 
 The 30s tick is the only recurring work. It used to make nine storage reads;
-now a tick that credits time makes one (the day record it writes), and a tick
-with nothing to credit makes none. Measured in a headless Brave over three real
-ticks: 15 reads before, 0 after.
+now a warm worker makes none: a tick that credits time writes the day record
+and reads nothing. Measured in a headless Brave from a fresh start through
+three real ticks: 38 reads before (23 at startup, 15 in ticks), 5 after (all
+at startup, 0 in ticks).
 
 That works because only the service worker writes storage -- the popup,
 dashboard and block page go through messages or only read. So the worker keeps
-the tracking state (write-through to `storage.session`) and the combined
-settings + limits + playback gates (`getConfig`) in memory. A store write drops
-the config cache, and so does any change seen through `storage.onChanged`. A
-generation counter stops a read that raced a write from being kept. An evicted
-worker just reads again on its next start. Beyond that:
+three things in memory, write-through: its tracking state (`storage.session`),
+the combined settings + limits + playback gates (`getConfig`, which the single
+getters share), and the day record it last wrote. Any store write drops or
+refreshes the matching cache. So does a change seen through
+`storage.onChanged` that is not the value already cached, such as an edit from
+DevTools. Generation counters stop a read that raced a write from being kept.
+An evicted worker just reads again on its next start, and startup runs once
+even when `onStartup` and the missing-alarm check both fire. Beyond that:
 
 - **The badge** is written only when its number changes, and only from the
   events that can change it (a limit crossed or set, a wipe, midnight). It is

@@ -1,6 +1,6 @@
 import { test, eq } from './harness.js';
 import { installChrome } from './harness.js';
-import { getDay, getDays, listDayKeys, pruneDays, migrate, getSettings, patchSettings, getConfig, setLimit } from '../src/lib/store.js';
+import { getDay, putDay, forgetDays, getDays, listDayKeys, pruneDays, migrate, getSettings, patchSettings, getConfig, setLimit } from '../src/lib/store.js';
 
 const at = (y, mo, d, h = 12) => new Date(y, mo - 1, d, h).getTime();
 const day = (date, sec = 60) => ({ date, totals: { 'a.com': sec }, hours: { 9: sec }, blocked: {}, warned: {} });
@@ -93,11 +93,28 @@ test('store: one config read matches the separate getters', async () => {
 
 test('store: config is cached until something writes it', async () => {
   const data = installChrome({ limits: { 'a.com': 30 } });
+  const heard = [];
+  chrome.storage.onChanged = { addListener: (fn) => heard.push(fn) };
   eq((await getConfig()).limits, { 'a.com': 30 });
-  data.limits = { 'a.com': 99 };                     // not written through the store
+  data.limits = { 'a.com': 99 };                     // not written through the store...
   eq((await getConfig()).limits, { 'a.com': 30 }, 'served from memory');
+  heard.forEach((fn) => fn({ limits: { newValue: data.limits } }, 'local'));   // ...until Chrome says so
+  eq((await getConfig()).limits, { 'a.com': 99 }, 'onChanged drops the cache');
   await setLimit('b.com', 10);
   eq((await getConfig()).limits, { 'a.com': 99, 'b.com': 10 }, 'a write drops the cache');
   await patchSettings({ idleSeconds: 45 });
   eq((await getConfig()).settings.idleSeconds, 45);
+});
+
+test('store: the day record is cached write-through and never shared', async () => {
+  const data = installChrome({ 'day:2026-03-10': day('2026-03-10', 60) });
+  const a = await getDay('2026-03-10');
+  a.totals['a.com'] = 999;                            // a caller mutating its copy
+  eq((await getDay('2026-03-10')).totals['a.com'], 60, 'cache is not shared');
+  await putDay({ ...a, totals: { 'a.com': 120 } });
+  data['day:2026-03-10'].totals['a.com'] = 5;         // behind the store's back
+  eq((await getDay('2026-03-10')).totals['a.com'], 120, 'served from memory');
+  eq(data['day:2026-03-10'].totals['a.com'], 5);
+  forgetDays();
+  eq((await getDay('2026-03-10')).totals['a.com'], 5, 'forgetDays re-reads');
 });

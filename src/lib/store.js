@@ -14,9 +14,10 @@ export const DEFAULT_SETTINGS = {
   mediaCountsAsPresent: true,  // playing media means you are here, input or not
 };
 
+// The single getters share getConfig's cache and hand out copies, since some
+// callers (setLimit, patchSettings) modify what they get back.
 export async function getSettings() {
-  const { settings } = await chrome.storage.local.get('settings');
-  return { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  return { ...(await getConfig()).settings };
 }
 
 export async function patchSettings(patch) {
@@ -41,16 +42,32 @@ let watching = false;
 
 function dropConfig() { config = null; generation += 1; }
 
+// The day record being written is cached the same way. putDay is the only
+// writer in the extension, so it refreshes the cache. A prune or wipe drops
+// it, and so does any change to that record seen through storage.onChanged
+// that is not the value already cached (an edit from DevTools, say). Stored as JSON so callers,
+// which mutate the record before putDay, never share it.
+let day = null;         // { area, slot, json }
+let dayGeneration = 0;
+
+export function forgetDays() { day = null; dayGeneration += 1; }
+
+function watch() {
+  if (watching || !chrome.storage.onChanged) return;
+  watching = true;
+  chrome.storage.onChanged.addListener((changes, name) => {
+    if (name !== 'local') return;
+    if (CONFIG_KEYS.some((k) => k in changes)) dropConfig();
+    const hit = day && changes[day.slot];
+    if (hit && (hit.newValue === undefined || JSON.stringify(hit.newValue) !== day.json)) forgetDays();
+  });
+}
+
 export async function getConfig() {
   const area = chrome.storage.local;
   if (config && config.area === area) return config.value;
 
-  if (!watching && chrome.storage.onChanged) {
-    watching = true;
-    chrome.storage.onChanged.addListener((changes, name) => {
-      if (name === 'local' && CONFIG_KEYS.some((k) => k in changes)) dropConfig();
-    });
-  }
+  watch();
   const gen = generation;
   const got = await area.get(CONFIG_KEYS);
   const value = {
@@ -63,8 +80,7 @@ export async function getConfig() {
 }
 
 export async function getLimits() {
-  const { limits } = await chrome.storage.local.get('limits');
-  return limits || {};
+  return { ...(await getConfig()).limits };
 }
 
 export async function setLimit(domain, minutes) {
@@ -80,8 +96,7 @@ export async function setLimit(domain, minutes) {
 // Kept separate from `limits`: a site can be playback-gated without a limit,
 // and limited without being playback-gated.
 export async function getPlaybackOnly() {
-  const { playbackOnly } = await chrome.storage.local.get('playbackOnly');
-  return playbackOnly || {};
+  return { ...(await getConfig()).playbackOnly };
 }
 
 export async function setPlaybackOnly(domain, on) {
@@ -100,13 +115,24 @@ export function emptyDay(key) {
 // Records are passed through slimDay on the way out, so no reader ever sees
 // the pre-schema-2 shape even if migrate() has not run yet.
 export async function getDay(key = dayKey()) {
+  const area = chrome.storage.local;
   const slot = DAY_PREFIX + key;
-  const got = await chrome.storage.local.get(slot);
-  return got[slot] ? slimDay(got[slot]) : emptyDay(key);
+  if (day && day.area === area && day.slot === slot) return JSON.parse(day.json);
+
+  watch();
+  const gen = dayGeneration;
+  const got = await area.get(slot);
+  const rec = got[slot] ? slimDay(got[slot]) : emptyDay(key);
+  if (gen === dayGeneration) day = { area, slot, json: JSON.stringify(rec) };
+  return rec;
 }
 
 export async function putDay(rec) {
-  await chrome.storage.local.set({ [DAY_PREFIX + rec.date]: rec });
+  const area = chrome.storage.local;
+  const slot = DAY_PREFIX + rec.date;
+  dayGeneration += 1;   // a read in flight from before this write must not be kept
+  await area.set({ [slot]: rec });
+  day = { area, slot, json: JSON.stringify(rec) };
 }
 
 export async function listDayKeys() {
@@ -130,7 +156,10 @@ export async function pruneDays(now = Date.now()) {
   const { keepDays } = await getSettings();
   const cutoff = cutoffKey(keepDays, now);
   const doomed = (await listDayKeys()).filter((k) => k < cutoff);
-  if (doomed.length) await chrome.storage.local.remove(doomed.map((k) => DAY_PREFIX + k));
+  if (doomed.length) {
+    await chrome.storage.local.remove(doomed.map((k) => DAY_PREFIX + k));
+    forgetDays();
+  }
   return doomed.length;
 }
 
@@ -151,5 +180,6 @@ export async function migrate() {
   await chrome.storage.local.set(patch);
   await chrome.storage.local.remove('diag');
   dropConfig();
+  forgetDays();
   return true;
 }

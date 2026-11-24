@@ -3,7 +3,7 @@ import { dayKey, prevDayKey, nextMidnight, fmtDuration, fmtMinutes, sumTotals } 
 import { hourSlices, creditRecord, creditEnd, blockedSet, keepBlocked } from './lib/accrual.js';
 import {
   getSettings, getConfig, patchSettings, getLimits, setLimit,
-  getDay, putDay, getDays, listDayKeys, pruneDays, migrate,
+  getDay, putDay, getDays, listDayKeys, pruneDays, migrate, forgetDays,
   setPlaybackOnly,
 } from './lib/store.js';
 
@@ -624,7 +624,15 @@ async function scheduleMidnight() {
   await chrome.alarms.create('midnight', { when: nextMidnight() + 2_000 });
 }
 
-async function init() {
+// onInstalled/onStartup and the missing-alarm check below both fire when the
+// browser starts or the extension is installed; one run is enough.
+let initRun = null;
+function init() {
+  initRun ||= setup().finally(() => { initRun = null; });
+  return initRun;
+}
+
+async function setup() {
   await migrate();
   await pruneDays();   // also at midnight, but the browser may be closed then
 
@@ -734,6 +742,7 @@ const handlers = {
       const [rec, limits] = await Promise.all([getDay(), getLimits()]);
       const kept = keepBlocked(rec, blockedSet(rec, limits));
       await chrome.storage.local.remove([...keys.map((k) => `day:${k}`), 'diag']);
+      forgetDays();
       await chrome.storage.session.remove('track');
       trackCache = null;
       if (kept) await putDay(kept);
