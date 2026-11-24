@@ -49,6 +49,19 @@ export function blockedSet(rec, limits) {
   return out;
 }
 
+// What of today's record survives "delete all history": only the time and
+// block stamp of sites that are blocked right now, so wiping history cannot
+// lift a block. Returns null when nothing is blocked.
+export function keepBlocked(rec, blocked) {
+  if (!blocked.size) return null;
+  const out = { date: rec.date, totals: {}, hours: {}, blocked: {}, warned: {} };
+  for (const domain of blocked) {
+    out.totals[domain] = rec.totals[domain] || 0;
+    if (rec.blocked[domain]) out.blocked[domain] = rec.blocked[domain];
+  }
+  return out;
+}
+
 // Normalises a stored record to the current shape. Records written before
 // schema 2 had hours[domain][hour] and a `sessions` timeline; the former is
 // collapsed to per-hour totals and the latter is dropped.

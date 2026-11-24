@@ -155,7 +155,13 @@ function renderSheet() {
 
   $('sheet-dot').style.background = index >= 0 && index < 5 ? SERIES[index] : OTHER;
   $('sheet-domain').textContent = domain;
-  $('rule-domain').textContent = domain;
+  // A spent limit is locked until midnight (the worker refuses the change too).
+  const locked = snap.blocked.includes(domain);
+  $('rule-title').textContent = locked ? 'Locked until midnight' : 'Blocks until midnight';
+  $('rule-body').innerHTML = locked
+    ? `Today's ${fmtMinutes(snap.limits[domain])} on ${escapeHtml(domain)} is spent. The limit can't be changed or removed until 00:00.`
+    : `At the limit, ${escapeHtml(domain)} is replaced by a block page in every tab until 00:00 local time. There is no snooze.`;
+  ['step-up', 'step-down', 'limit-range', 'save-limit'].forEach((id) => { $(id).disabled = locked; });
   $('sheet-used').textContent = used > 0 ? `${fmtDuration(used)} today` : 'Nothing today yet';
   $('limit-value').textContent = fmtMinutes(minutes);
   $('limit-range').value = String(minutes);
@@ -164,7 +170,7 @@ function renderSheet() {
   $('playback-help').textContent = snap.playbackOnly[domain]
     ? `${domain} only counts while its tab is making sound. A muted video will not count.`
     : 'A focused tab is not a watched one. Applies immediately.';
-  $('remove-limit').disabled = !snap.limits[domain];
+  $('remove-limit').disabled = locked || !snap.limits[domain];
 
   const host = $('presets');
   host.innerHTML = '';
@@ -174,6 +180,7 @@ function renderSheet() {
     b.className = 'preset';
     b.textContent = fmtMinutes(v);
     b.setAttribute('aria-pressed', String(v === minutes));
+    b.disabled = locked;
     b.addEventListener('click', () => setMinutes(v));
     host.append(b);
   });

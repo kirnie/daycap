@@ -50,8 +50,11 @@ also covers `m.youtube.com`.
 ### When a limit is reached
 
 - Every tab on that site is replaced by a block page until 00:00 local time.
-- There is no snooze. If the number was wrong, raise the limit in the
-  dashboard and the block lifts immediately.
+- There is no snooze. Once a limit is spent it is locked until midnight: it
+  can't be raised or removed, and deleting history doesn't lift the block.
+  Before it runs out you can change it freely.
+- After midnight the block page offers **Continue to …**, which takes you
+  back to the exact page it replaced.
 - You can get a warning notification at 50%, 80% or 90% of a limit
   (**Settings → Warn before a limit**).
 

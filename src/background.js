@@ -1,6 +1,6 @@
 import { registrableDomain } from './lib/domain.js';
 import { dayKey, prevDayKey, nextMidnight, fmtDuration, fmtMinutes, sumTotals } from './lib/time.js';
-import { hourSlices, creditRecord, creditEnd, blockedSet } from './lib/accrual.js';
+import { hourSlices, creditRecord, creditEnd, blockedSet, keepBlocked } from './lib/accrual.js';
 import {
   getSettings, patchSettings, getLimits, setLimit,
   getDay, putDay, getDays, listDayKeys, pruneDays, migrate,
@@ -454,9 +454,18 @@ async function runTick(reason) {
 // --- blocking ----------------------------------------------------------------
 
 function blockedUrl(domain, original) {
-  const params = new URLSearchParams({ d: domain });
+  const params = new URLSearchParams({ d: domain, k: dayKey() });
   if (original) params.set('u', original);
   return chrome.runtime.getURL(`src/blocked/blocked.html?${params}`);
+}
+
+// A limit that has been spent today is locked until midnight: it can be
+// neither raised nor removed, so there is no way to talk oneself past it.
+async function lockedLimits() {
+  const [rec, limits] = await Promise.all([getDay(), getLimits()]);
+  const set = blockedSet(rec, limits);
+  set.limits = limits;
+  return set;
 }
 
 function isOwnBlockPage(url) {
@@ -653,13 +662,17 @@ const handlers = {
     // Time is bucketed by registrable domain, so a limit keyed any other way
     // (news.ycombinator.com) would never match. Normalise at the door.
     const key = registrableDomain(`https://${domain}`) || domain;
+    const locked = await lockedLimits();
+    if (locked.has(key)) return { error: 'locked', domain: key, limits: locked.limits };
     const limits = await setLimit(key, minutes);
     await sweepTabs();      // a lowered limit can block immediately
-    await refreshBadge();   // a raised one clears the badge
+    await refreshBadge();
     return { limits };
   },
 
   async removeLimit({ domain }) {
+    const locked = await lockedLimits();
+    if (locked.has(domain)) return { error: 'locked', domain, limits: locked.limits };
     const limits = await setLimit(domain, 0);
     await refreshBadge();
     return { limits };
@@ -696,13 +709,22 @@ const handlers = {
     return { playbackOnly };
   },
 
+  // Deleting history must not double as an unblock: today's time on a site
+  // that is blocked right now is written back, and nothing else is.
   async clearData() {
-    const keys = await listDayKeys();
-    await chrome.storage.local.remove([...keys.map((k) => `day:${k}`), 'diag']);
-    await chrome.storage.session.remove('track');
+    let cleared = 0;
+    await enqueue(async () => {
+      const keys = await listDayKeys();
+      const [rec, limits] = await Promise.all([getDay(), getLimits()]);
+      const kept = keepBlocked(rec, blockedSet(rec, limits));
+      await chrome.storage.local.remove([...keys.map((k) => `day:${k}`), 'diag']);
+      await chrome.storage.session.remove('track');
+      if (kept) await putDay(kept);
+      cleared = keys.length;
+    });
     await refreshBadge();
     await tick('cleared');
-    return { cleared: keys.length };
+    return { cleared };
   },
 
   async closeTab(_msg, sender) {

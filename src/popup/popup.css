@@ -86,6 +86,8 @@ main {
   background: var(--surface); color: var(--ink);
 }
 .step:hover { background: var(--raised); }
+.step:disabled, .preset:disabled, input[type="range"]:disabled { opacity: 0.45; cursor: default; }
+.step:disabled:hover { background: var(--surface); }
 .step svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; }
 .value { flex-grow: 1; text-align: center; font-size: 38px; line-height: 1; }
 

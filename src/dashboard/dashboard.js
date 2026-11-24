@@ -430,7 +430,10 @@ function renderLimits() {
       </span>
       <span class="c-status"></span>`;
 
+    // A spent limit is locked until midnight; the worker refuses changes too.
+    const locked = snap.blocked.includes(domain);
     const input = row.querySelector('input');
+    input.disabled = locked;
     input.addEventListener('change', async () => {
       const v = Math.max(5, Math.min(1440, parseInt(input.value, 10) || 5));
       input.value = String(v);
@@ -438,7 +441,12 @@ function renderLimits() {
       await reload();
     });
 
-    row.querySelector('.c-status').append(playbackToggle(domain), removeButton(domain));
+    const tail = locked
+      ? Object.assign(document.createElement('span'), {
+        className: 'muted', textContent: 'Locked until 00:00', title: 'Today’s allowance is spent',
+      })
+      : removeButton(domain);
+    row.querySelector('.c-status').append(playbackToggle(domain), tail);
     host.append(row);
   });
 
@@ -486,7 +494,11 @@ $('add-form').addEventListener('submit', async (e) => {
     $('add-hint').textContent = 'Enter a site like youtube.com.';
     return;
   }
-  await send({ type: 'setLimit', domain, minutes });
+  const res = await send({ type: 'setLimit', domain, minutes });
+  if (res && res.error === 'locked') {
+    $('add-hint').textContent = `${domain} is blocked; its limit is locked until midnight.`;
+    return;
+  }
   $('add-domain').value = '';
   $('add-hint').textContent = `Limit set: ${domain}, ${fmtMinutes(minutes)} a day.`
     + (typed !== domain && typed !== `www.${domain}` ? ` (${typed} is counted as part of ${domain}.)` : '');
@@ -574,7 +586,7 @@ $('wipe').addEventListener('click', async () => {
   if ($('wipe').dataset.armed !== '1') {
     $('wipe').dataset.armed = '1';
     $('wipe').textContent = 'Click again to confirm';
-    note.textContent = 'This deletes every recorded day and the diagnostics log. Your limits and settings are kept.';
+    note.textContent = 'This deletes every recorded day and the diagnostics log. Your limits and settings are kept, and so is today’s time on sites blocked right now.';
     setTimeout(() => {
       $('wipe').dataset.armed = '0';
       $('wipe').textContent = 'Delete all history';

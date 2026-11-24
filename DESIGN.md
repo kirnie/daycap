@@ -80,14 +80,22 @@ special-casing.
   background tabs included, so one cannot idle past the limit and be waiting
   for you later.
 - The block holds until **00:00 local time**. There is no snooze.
-- Raising the limit lifts the block immediately, and the block page offers to
-  return you to the page it replaced.
+- A spent limit is **locked until midnight**: it can be neither raised nor
+  removed while the site is blocked. Limits can be changed freely before they
+  run out. The worker enforces the lock (`setLimit`/`removeLimit` answer
+  `{ error: 'locked' }`), and the popup and dashboard disable their controls.
+- **Delete all history** cannot be used as an unblock either: today's time and
+  block stamp for sites blocked right now are written back after the wipe
+  (`keepBlocked` in `src/lib/accrual.js`), and nothing else is.
+- Once the block lifts at midnight, the block page says so and its button
+  returns you to the exact URL it replaced. The page carries the day it was put
+  up (`k=`), which is how it tells a new day apart.
 - Limits are keyed by site, the same way time is counted: entering
   `news.ycombinator.com` sets the limit on `ycombinator.com`.
 
-Whether a site *is* blocked is always derived from the live limit, never from a
-stored flag, which is what makes "raise the limit, block lifts" work without a
-separate unblock step.
+Whether a site *is* blocked is always derived from today's time and the live
+limit, never from a stored flag, so the block lifts at midnight on its own,
+without a separate unblock step.
 
 ## How sites are bucketed
 

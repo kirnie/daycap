@@ -1,5 +1,5 @@
 import { test, eq, near } from './harness.js';
-import { hourSlices, creditRecord, creditEnd, blockedSet, slimDay, cutoffKey } from '../src/lib/accrual.js';
+import { hourSlices, creditRecord, creditEnd, blockedSet, keepBlocked, slimDay, cutoffKey } from '../src/lib/accrual.js';
 import { dayKey, sumTotals } from '../src/lib/time.js';
 
 const at = (y, mo, d, h = 0, mi = 0, s = 0) => new Date(y, mo - 1, d, h, mi, s).getTime();
@@ -65,6 +65,20 @@ test('accrual: blocked is derived from the live limit', () => {
   eq([...blockedSet(rec, { 'a.com': 31 })], []);        // raising a limit lifts it
   eq([...blockedSet(rec, { 'a.com': 0 })], []);
   eq([...blockedSet(rec, {})], []);
+});
+
+test('accrual: wiping history keeps only what holds a block in place', () => {
+  const rec = {
+    date: '2026-11-24',
+    totals: { 'a.com': 1800, 'b.com': 600 },
+    hours: { 9: 2400 },
+    blocked: { 'a.com': 111 },
+    warned: { 'a.com': 100, 'b.com': 200 },
+  };
+  eq(keepBlocked(rec, new Set()), null);
+  eq(keepBlocked(rec, blockedSet(rec, { 'a.com': 30, 'b.com': 30 })), {
+    date: '2026-11-24', totals: { 'a.com': 1800 }, hours: {}, blocked: { 'a.com': 111 }, warned: {},
+  });
 });
 
 test('accrual: old records lose their timeline and per-site hours', () => {
