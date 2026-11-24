@@ -244,9 +244,37 @@ gjs -m test/run-gjs.js      # GNOME's gjs, if Node is not installed
 ```
 
 They cover site bucketing, day and hour boundaries (including a span crossing
-midnight), the credit cap after a suspend, limit/block derivation, retention by
-calendar date, and the migration of old records. The focus heuristics in
-`background.js` depend on live browser events and are not covered.
+midnight), the credit cap after a suspend, limit/block derivation, the wipe
+keeping blocks, the storage caches, retention by calendar date, and the
+migration of old records.
+
+```
+python3 test/e2e/brave.py            # real headless Brave/Chromium, ~2 min
+python3 test/e2e/brave.py cost DIR   # worker storage reads/writes for tree DIR
+```
+
+The end-to-end test needs Python's `websockets`. It loads the unpacked
+extension into a throwaway headless profile, maps `site.test` to a local
+server, and checks live tracking on a real page, blocking (with the exact URL
+kept), the limit lock in the worker, dashboard and popup, the wipe keeping a
+block, the block page noticing the lift without polling, "Continue" going back
+to the original URL, and the "New day" text. `cost` mode injects a counter into
+a copy of any tree, for comparisons like this one (fresh start, then three
+ticks idle and three tracked):
+
+| | before (`dcec2e2`) | now |
+|---|---|---|
+| startup reads / writes | 23 / 4 | 5 / 2 |
+| idle ticks: reads / writes | 15 / 3 | 0 / 3 |
+| tracked ticks: reads / writes | 24 / 6 | 0 / 6 |
+
+The writes left are the minimum. A tracked tick must save the day record (the
+credit) and the tracking state's new `since`/`heartbeat`, because without the
+second an evicted worker would credit the same span twice. The idle writes in
+the table come from headless Brave reporting its window as focused, so
+`lastFlagTrue` moves (see *Keeping it light*). With the browser behind other
+apps, an idle tick writes nothing. The Wayland focus heuristics themselves are
+not covered: they need a real compositor.
 
 ## Known limits
 
