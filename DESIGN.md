@@ -149,7 +149,8 @@ even when `onStartup` and the missing-alarm check both fire. Beyond that:
   not refreshed on every tick.
 - **Block pages never message the worker.** They read `limits` and today's
   record straight from storage, repaint on `storage.onChanged`, and run their
-  clock only while visible. A blocked tab left open all day wakes nothing.
+  clock only while visible, once a minute (every second only in the last minute
+  before midnight). A blocked tab left open all day wakes nothing.
 - **The dashboard** refreshes every 30s only while it is visible. It fetches
   the full history once, and after that swaps in just today's record, since
   past days do not change.
@@ -267,6 +268,20 @@ ticks idle and three tracked):
 | startup reads / writes | 23 / 4 | 5 / 2 |
 | idle ticks: reads / writes | 15 / 3 | 0 / 3 |
 | tracked ticks: reads / writes | 24 / 6 | 0 / 6 |
+
+`perf` mode (`python3 test/e2e/brave.py perf DIR`) measures CPU and memory
+the same way: sampled worker CPU over three idle ticks, and a blocked tab over
+60s visible and 60s hidden.
+
+| | before (`dcec2e2`) | now |
+|---|---|---|
+| worker, 3 idle ticks | 1.0 ms CPU, 729 KB heap | 1.0 ms CPU, 697 KB heap |
+| blocked tab visible, 60s: page / worker | 50.3 / 3.8 ms | 2.0 / 0.3 ms |
+| blocked tab hidden, 60s: page / worker | 8.7 / 2.1 ms | 1.1 / 0.5 ms |
+
+The visible block page used to repaint every second. Its clock reads in whole
+minutes until the last minute before midnight, so it now repaints on minute
+boundaries and switches to every second only for that last minute.
 
 The writes left are the minimum. A tracked tick must save the day record (the
 credit) and the tracking state's new `since`/`heartbeat`, because without the

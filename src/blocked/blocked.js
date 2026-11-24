@@ -95,7 +95,7 @@ function showUnblocked(today) {
   const go = $('dashboard');
   go.classList.add('primary');
   go.textContent = `Continue to ${domain}`;
-  clearInterval(clock);
+  clearTimeout(clock);
 
   $('fine').textContent = original
     ? 'Picking up where you left off.'
@@ -106,13 +106,26 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && !unblocked && (changes.limits || changes[`day:${dayKey()}`])) paintState();
 });
 
+// Everything on the clock reads in whole minutes until the last minute before
+// midnight, when the countdown shows seconds. So repaint on the next minute
+// boundary, and every second only in that final minute.
 let clock = null;
+function nextPaintIn(now = Date.now()) {
+  if (nextMidnight(now) - now <= 61_000) return 1000 - (now % 1000);
+  return 60_000 - (now % 60_000) + 20;
+}
+function scheduleClock() {
+  clock = setTimeout(() => {
+    paintClock();
+    if (!unblocked && document.visibilityState === 'visible') scheduleClock();
+  }, nextPaintIn());
+}
 function syncClock() {
-  clearInterval(clock);
+  clearTimeout(clock);
   clock = null;
   if (document.visibilityState !== 'visible') return;
   paintClock();
-  if (!unblocked) clock = setInterval(paintClock, 1000);
+  if (!unblocked) scheduleClock();
 }
 document.addEventListener('visibilitychange', syncClock);
 

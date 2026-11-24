@@ -2,6 +2,7 @@
 # DevTools protocol. Needs Python 3 with the `websockets` package.
 #
 #   python3 test/e2e/brave.py            # functional checks against this tree
+#   python3 test/e2e/brave.py perf DIR   # worker + block page CPU and heap for DIR
 #   python3 test/e2e/brave.py cost DIR   # storage reads/writes of the worker in DIR
 #                                        # (an extension tree, e.g. a `git archive` of
 #                                        # an older commit) over a fresh start + 3 ticks
@@ -14,8 +15,8 @@ import websockets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-MODE = 'cost' if len(sys.argv) > 1 and sys.argv[1] == 'cost' else 'full'
-EXT = os.path.abspath(sys.argv[2]) if MODE == 'cost' and len(sys.argv) > 2 else ROOT
+MODE = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ('cost', 'perf') else 'full'
+EXT = os.path.abspath(sys.argv[2]) if MODE != 'full' and len(sys.argv) > 2 else ROOT
 PORT = 9333
 BROWSER = os.environ.get('BROWSER_BIN') or shutil.which('brave-browser') or shutil.which('chromium-browser') or shutil.which('chromium')
 
@@ -89,6 +90,42 @@ async def main():
     ver = json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version'))
     b = Conn(await websockets.connect(ver['webSocketDebuggerUrl'], max_size=None))
     await asyncio.sleep(1.5)   # let init() finish
+
+    if MODE == 'perf':
+        # Worker: sampled CPU (profiler, non-idle samples) and heap over three
+        # idle ticks. Blocked tab: page CPU (TaskDuration) and worker CPU over
+        # 60s visible, then 60s hidden.
+        await w.call('Profiler.enable')
+        await w.call('Profiler.setSamplingInterval', {'interval': 100})
+        async def worker_cpu(seconds):
+            await w.call('Profiler.start'); await asyncio.sleep(seconds)
+            prof = (await w.call('Profiler.stop'))['profile']
+            idle = {n['id'] for n in prof['nodes'] if n['callFrame']['functionName'] in ('(idle)', '(program)')}
+            return sum(d for sid, d in zip(prof['samples'], prof['timeDeltas']) if sid not in idle) / 1000
+        async def page_cpu(c):
+            m = {x['name']: x['value'] for x in (await c.call('Performance.getMetrics'))['metrics']}
+            return 1000 * m.get('TaskDuration', 0)
+        idle_ms = await worker_cpu(92)
+        heap = await w.call('Runtime.getHeapUsage')
+        print(f"worker, 3 idle ticks     : {idle_ms:.1f} ms CPU, heap {heap['usedSize'] / 1024:.0f} KB")
+        today = await w.ev("(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()")
+        await w.ev(f"chrome.storage.local.set({{ limits: {{ 'site.test': 5 }}, 'day:{today}': {{ date: '{today}', totals: {{ 'site.test': 400 }}, hours: {{}}, blocked: {{ 'site.test': 1 }}, warned: {{}} }} }})")
+        await asyncio.sleep(1)
+        bp_id = (await b.call('Target.createTarget', {'url': f'{base}/src/blocked/blocked.html?d=site.test&k={today}&u=http%3A%2F%2Fsite.test%2F'}))['targetId']
+        await asyncio.sleep(2)
+        bp = await connect(next(t for t in targets() if t['id'] == bp_id))
+        await bp.call('Performance.enable')
+        for label in ('visible', 'hidden'):
+            if label == 'hidden':
+                other = (await b.call('Target.createTarget', {'url': 'about:blank', 'background': False}))['targetId']
+                await b.call('Target.activateTarget', {'targetId': other})
+                await asyncio.sleep(1)
+            state = await bp.ev('document.visibilityState')
+            p0 = await page_cpu(bp)
+            wms = await worker_cpu(60)
+            p1 = await page_cpu(bp)
+            print(f"blocked tab {state:8s} 60s: page {p1 - p0:.1f} ms CPU, worker {wms:.1f} ms CPU")
+        return
 
     if MODE == 'cost':
         # Three ticks with nothing trackable in front, then three with a real
