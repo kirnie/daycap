@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tabtime",
   "version": "1.1.0",
-  "description": "Counts time on the active tab of the focused window, with daily limits that block a site until midnight.",
+  "description": "See where your browsing time goes, and set daily limits you can't talk yourself out of.",
   "permissions": [
     "storage",
     "tabs",
