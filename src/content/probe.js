@@ -1,4 +1,4 @@
-// Tabtime page probe.
+// Daycap page probe.
 //
 // Injected only when "Accurate tracking" is enabled and you have granted page
 // access. It exists because the browser-process focus flag is unusable on

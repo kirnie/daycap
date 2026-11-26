@@ -1,13 +1,13 @@
-# Tabtime: design notes
+# Daycap: design notes
 
-How Tabtime works and why it works that way: the tracking rules, the platform
+How Daycap works and why it works that way: the tracking rules, the platform
 problems found along the way and how they were measured and fixed, what is
 stored, and what is deliberately left out.
 
 For what the extension is and how to install and use it, see
 [README.md](README.md).
 
-Tabtime is a Brave/Chromium extension that counts time on the **active tab of
+Daycap is a Brave/Chromium extension that counts time on the **active tab of
 the focused window**, summarises the day, and blocks a site until midnight once
 it passes a daily limit. It was built for personal use on Fedora. No accounts,
 no servers, no network requests.

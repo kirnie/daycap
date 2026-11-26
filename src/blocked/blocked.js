@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 let unblocked = false;
 let shownDay = dayKey();
 
-document.title = `${domain} is blocked — Tabtime`;
+document.title = `${domain} is blocked — Daycap`;
 $('domain').textContent = domain;
 
 $('close').addEventListener('click', () => {

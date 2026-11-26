@@ -36,7 +36,7 @@ save(im, 128, 128, 'store-icon-128.png')
 def tile(w, h, R, title_px, sub_px, gap, name):
     im, d = canvas(w, h, BG)
     tf, sf = font(title_px, 800), font(sub_px, 400)
-    title, sub = 'Tabtime', 'Time per site. Daily limits.'
+    title, sub = 'Daycap', 'Time per site. Daily limits.'
     tw = max(d.textlength(title, font=tf), d.textlength(sub, font=sf))
     total = 2*R*SS + gap*SS + tw
     x0 = (w*SS - total)/2; cy = h*SS/2

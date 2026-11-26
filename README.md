@@ -1,4 +1,4 @@
-# Tabtime
+# Daycap
 
 A browser extension for Brave, Chrome and other Chromium browsers that shows
 where your browsing time goes and lets you cap it.
@@ -15,8 +15,9 @@ where your browsing time goes and lets you cap it.
 
 ### From the Chrome Web Store
 
-Not published yet. Once it is, the link will be here, and it will install in
-Brave, Chrome, Edge and other Chromium browsers.
+Install [Daycap from the Chrome Web Store](https://chromewebstore.google.com/detail/bchoepedlbpjbgcedohjbkfbelfbnffd).
+It works in Brave, Chrome, Edge and other Chromium browsers, which keep it
+updated automatically.
 
 ### From source
 
@@ -26,16 +27,16 @@ Brave, Chrome, Edge and other Chromium browsers.
 3. Turn on **Developer mode** in the top right corner.
 4. Click **Load unpacked** and select the folder that contains
    `manifest.json`.
-5. Pin the Tabtime icon to the toolbar.
+5. Pin the Daycap icon to the toolbar.
 
-To update, pull the new version and press the reload arrow on the Tabtime card
+To update, pull the new version and press the reload arrow on the Daycap card
 on the extensions page.
 
 ## Use
 
 ### See today's time
 
-Click the Tabtime icon. The popup shows your active time today and your top
+Click the Daycap icon. The popup shows your active time today and your top
 sites. **Dashboard** opens the full view: time by hour, every site visited
 today, and a day-by-day history.
 
@@ -70,7 +71,7 @@ also covers `m.youtube.com`.
 
 ## Permissions
 
-Out of the box Tabtime has no access to page content. It uses `tabs` to read
+Out of the box Daycap has no access to page content. It uses `tabs` to read
 the address of the active tab, `idle` to detect when you are away, `alarms`,
 `notifications` and `storage`. Access to all sites is requested only if you turn
 on **Accurate tracking**, and is removed again when you turn it off.
@@ -80,11 +81,11 @@ on **Accurate tracking**, and is removed again when you turn it off.
 ```
 npm test                    # Node
 gjs -m test/run-gjs.js      # GNOME's gjs, if Node is not installed
-npm run package             # builds dist/tabtime-<version>.zip for the store
+npm run package             # builds dist/daycap-<version>.zip for the store
 ```
 
 Without npm, the package is just a zip of the extension files:
-`zip -r dist/tabtime.zip manifest.json icons src`.
+`zip -r dist/daycap.zip manifest.json icons src`.
 
 There is no build step and there are no dependencies. How the tracking works,
 and why, is written up in [DESIGN.md](DESIGN.md).

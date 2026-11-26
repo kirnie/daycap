@@ -1,6 +1,6 @@
-# Tabtime privacy policy
+# Daycap privacy policy
 
-Tabtime does not collect, transmit or sell any data. It makes no network
+Daycap does not collect, transmit or sell any data. It makes no network
 requests. Everything it records stays in the browser profile it is installed
 in, and is removed when you uninstall the extension.
 
@@ -23,7 +23,7 @@ and **Export CSV** shows everything that is kept.
 
 ## Page access
 
-By default Tabtime cannot read any page. If you turn on **Accurate tracking**,
+By default Daycap cannot read any page. If you turn on **Accurate tracking**,
 it asks for access to all sites and adds a small script to each page. That
 script tells the extension two things only: whether the page has focus, and
 whether video or audio is playing. It reads no page content, and nothing leaves

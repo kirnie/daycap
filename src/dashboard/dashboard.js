@@ -520,7 +520,7 @@ function renderSettings() {
   $('s-accurate').checked = !!s.accurate;
   $('s-media').checked = s.mediaCountsAsPresent !== false;
   $('accurate-note').textContent = s.accurate
-    ? 'On \u2014 Tabtime has access to every site. Tabs opened before you enabled this may need one reload.'
+    ? 'On \u2014 Daycap has access to every site. Tabs opened before you enabled this may need one reload.'
     : 'Off \u2014 no page access. Falling back to window focus, which is unreliable on Wayland.';
 }
 
@@ -561,7 +561,7 @@ $('s-accurate').addEventListener('change', async (e) => {
   snap.settings = res.settings;
   e.target.checked = !!res.settings.accurate;
   note.textContent = res.settings.accurate
-    ? 'On \u2014 Tabtime has access to every site. Tabs opened before you enabled this may need one reload.'
+    ? 'On \u2014 Daycap has access to every site. Tabs opened before you enabled this may need one reload.'
     : 'Off \u2014 no page access. Falling back to window focus, which is unreliable on Wayland.';
   await reload();
 });
@@ -576,7 +576,7 @@ $('export').addEventListener('click', () => {
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `tabtime-${snap.today.date}.csv`;
+  a.download = `daycap-${snap.today.date}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
 });

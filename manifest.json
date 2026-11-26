@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Tabtime",
-  "version": "1.1.0",
+  "name": "Daycap",
+  "version": "1.1.1",
   "description": "See where your browsing time goes, and set daily limits you can't talk yourself out of.",
   "permissions": [
     "storage",
@@ -17,7 +17,7 @@
   },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "Tabtime",
+    "default_title": "Daycap",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
